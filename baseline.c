@@ -7151,7 +7151,7 @@ static int futrts_entry_main(struct futhark_context *ctx,
                                "Index [", (long long) i_8030,
                                "] out of bounds for array of shape [",
                                (long long) n_8025, "].",
-                               "-> #0  /prelude/array.fut:26:29-34\n   #1  lib/github.com/diku-dk/sorts/radix_sort.fut:25:24-35\n   #2  lib/github.com/diku-dk/sorts/radix_sort.fut:53:31-62\n   #3  lib/github.com/diku-dk/sorts/radix_sort.fut:79:6-36\n   #4  baseline.fut:12:17-59\n   #5  baseline.fut:11:1-13:11\n");
+                               "-> #0  /prelude/array.fut:26:29-34\n   #1  lib/github.com/diku-dk/sorts/radix_sort.fut:25:24-35\n   #2  lib/github.com/diku-dk/sorts/radix_sort.fut:53:31-62\n   #3  lib/github.com/diku-dk/sorts/radix_sort.fut:79:6-36\n   #4  baseline.fut:13:17-59\n   #5  baseline.fut:12:1-14:11\n");
         if (memblock_unref_device(ctx, &mem_out_8215, "mem_out_8215") != 0)
             return 1;
         err = 1;
