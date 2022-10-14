@@ -7,5 +7,7 @@ import "lib/github.com/diku-dk/sorts/radix_sort"
 
 entry sort_i64 = radix_sort_int i64.num_bits i64.get_bit
 --
---let main (n : i64) : []i64 =
+let main [n]i64 : [n]i64 =
+    let sort =  radix_sort_int i64.num_bits i64.get_bit
+    in sort
 
