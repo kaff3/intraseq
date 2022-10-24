@@ -1,5 +1,7 @@
 #include <cuda_runtime.h>
 #include <cooperative_groups.h>
+#include <stdint.h>
+
 #include "cub/device/device_scan.cuh"
 
 #define NUM_THREADS 256
@@ -16,19 +18,20 @@ __global__ void kernel12(unsigned int* d_out, unsigned int* d_in, uint64_t arr_s
     __shared__ unsigned int s_histogram[HISTOGRAM_SIZE];
     int iterations = TILE_SIZE / NUM_THREADS; 
     int idx = threadIdx.x;
-    int gid = blockDim.x * blockIdx.x + threadIdx.x; 
+    // int gid = blockDim.x * blockIdx.x + threadIdx.x; 
 
     // zero initialize histogram
     if (idx < HISTOGRAM_SIZE){
         s_histogram[idx] = 0;
     }
-
     __syncthreads();
+
+
 
     // Copy elements from global memory and increment histogram
     for (int i = 0; i < iterations; i++) {
         // uint64_t arr_i = gid + i * NUM_THREADS;
-        uint64_t arr_i = blockIdx.x * blockDim.x * B + idx * i * NUM_THREADS;
+        uint64_t arr_i = blockIdx.x * blockDim.x * B + (idx + i * NUM_THREADS);
         if (arr_i < arr_size) {
             unsigned int val = d_in[arr_i];
             unsigned int digit = get_digit(val, curr_digit);
@@ -37,8 +40,7 @@ __global__ void kernel12(unsigned int* d_out, unsigned int* d_in, uint64_t arr_s
             // copy to shared memory
             s_tile[idx + i * NUM_THREADS] = val;
         }
-    }
-    __syncthreads();
+    } __syncthreads();
     
     // copy local histogram to global memory transposed
     // Because there are 8 warps per block, if for each Warp
@@ -53,13 +55,15 @@ __global__ void kernel12(unsigned int* d_out, unsigned int* d_in, uint64_t arr_s
     // }
 
     if (idx < 16) {
-        // d_histogram[gridDim.x * idx + blockIdx.x] = s_histogram[idx];
-        d_histogram[gridDim.x * blockIdx.x + idx] = s_histogram[idx];
-    }
-   
+        d_histogram[gridDim.x * idx + blockIdx.x] = s_histogram[idx];
+    } __syncthreads();
 
-
-   __syncthreads();
+    // if (idx == 0) {
+    //     printf("s_histogram original\n");
+    //     for (int i = 0; i < HISTOGRAM_SIZE; i++) {
+    //         printf("his[%3i] = %3i\n", i, s_histogram[i]);
+    //     }
+    // } __syncthreads();
 
     // exclusive scan over histogram
     // TODO: currently sequential on a single thread
@@ -71,8 +75,15 @@ __global__ void kernel12(unsigned int* d_out, unsigned int* d_in, uint64_t arr_s
         for (int i = 1; i < HISTOGRAM_SIZE; i++){
             s_histogram[i] += s_histogram[i-1];
         }
-    }
-     __syncthreads();
+    } __syncthreads();
+
+
+    // if (idx == 0) {
+    //     printf("s_histogram scanned\n");
+    //     for (int i = 0; i < HISTOGRAM_SIZE; i++) {
+    //         printf("his[%3i] = %3i\n", i, s_histogram[i]);
+    //     }
+    // } __syncthreads();
 
     for (int i  = 0; i < iterations; i++){
         // foreach val in s_tile
@@ -80,13 +91,14 @@ __global__ void kernel12(unsigned int* d_out, unsigned int* d_in, uint64_t arr_s
         // unsigned int val = s_tile[idx + i * NUM_THREADS];
         // unsigned int old = atomicAdd(s_histogram + val, 1);
 
-        unsigned int val   = s_tile[idx + i * NUM_THREADS];
-        unsigned int digit = get_digit(val, curr_digit);
-        unsigned int old   = atomicAdd(s_histogram + digit, 1);
-        s_tile_sorted[old] = val;
-    }
-
-    __syncthreads();
+        unsigned int index = idx + i * NUM_THREADS;
+        if (index < arr_size) {
+            unsigned int val   = s_tile[index];
+            unsigned int digit = get_digit(val, curr_digit);
+            unsigned int old   = atomicAdd(s_histogram + digit, 1);
+            s_tile_sorted[old] = val;
+        }
+    } __syncthreads();
 
 
     // SKAL VI SKRIVE DET SORTEREDE TILBAGE?
@@ -99,7 +111,7 @@ __global__ void kernel12(unsigned int* d_out, unsigned int* d_in, uint64_t arr_s
         if (offset + index < arr_size) {
             d_out[offset + index] = s_tile_sorted[index];
         }
-    }
+    } __syncthreads();
 }
 
 // 
@@ -135,7 +147,7 @@ int main(int argc, char* argv[]){
     unsigned int* h_out = (unsigned int*) malloc(arr_size);
 
     // Create random array to sort
-    randomInitNat(h_in, N, N);
+    randomInitNat(h_in, N, 0xFF);
 
     // Compute blocks and block sizes
     unsigned int num_blocks = (N + TILE_SIZE - 1) / TILE_SIZE;
@@ -165,13 +177,20 @@ int main(int argc, char* argv[]){
 
         // Swap input input and output
         // unsigned int* tmp = d_out;
-        d_res = d_out;
-        d_out = d_in;
-        d_in = d_res;
+        
+        // d_res = d_out;
+        // d_out = d_in;
+        // d_in  = d_res;
 
+        d_res = d_in;
+        d_in  = d_out;
+        d_out = d_res;
+
+        // cudaMemset(d_histogram, 0, num_blocks*HISTOGRAM_SIZE*sizeof(int));
     }
+    // kernel12<<< num_blocks, NUM_THREADS >>>(d_out, d_in, N, d_histogram, 0);
 
-    printf("d_res: %x", d_res);
+    printf("d_res: %x\n", d_res);
 
     cudaMemcpy(h_out, d_res, arr_size, cudaMemcpyDeviceToHost);
 
