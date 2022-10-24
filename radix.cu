@@ -111,10 +111,10 @@ int main(int argc, char* argv[]){
     unsigned int* h_out = (unsigned int*) malloc(arr_size);
 
     // Create random array to sort
-    randomInitNat(h_in, N, N/10);
+    randomInitNat(h_in, N, N);
 
     // Compute blocks and block sizes
-    unsigned int num_blocks = (arr_size + TILE_SIZE - 1) / TILE_SIZE;
+    unsigned int num_blocks = (N + TILE_SIZE - 1) / TILE_SIZE;
 
     // Device allocations
     unsigned int* d_in;
@@ -131,7 +131,7 @@ int main(int argc, char* argv[]){
 
     for (int i = 0; i < (sizeof(unsigned int)*8)/B; i++) {
 
-        kernel12<<< num_blocks, NUM_THREADS >>>(d_out, d_in, arr_size, d_histogram, i);
+        kernel12<<< num_blocks, NUM_THREADS >>>(d_out, d_in, N, d_histogram, i);
 
         d_res = d_out;
         // Swap input input and output
@@ -144,8 +144,8 @@ int main(int argc, char* argv[]){
     cudaMemcpy(h_out, d_res, arr_size, cudaMemcpyDeviceToHost);
 
     printf("h_out:\n");
-    for (int i = 0; i < arr_size; i++) {
-        printf("%i\n", h_out[i]);
+    for (int i = 0; i < N; i++) {
+        printf("%i      %i\n", h_out[i], h_in[i]);
     }
 
 
