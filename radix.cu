@@ -1,5 +1,6 @@
 #include <cuda_runtime.h>
 #include <cooperative_groups.h>
+#include "cub/device/device_scan.cuh"
 
 #define NUM_THREADS 256
 #define TILE_SIZE 1024
@@ -8,75 +9,8 @@
 #define HISTOGRAM_SIZE 16
 #define WARP 32
 
-// ******************** SCAN FROM ASSIGNMENT 2 ******************** 
-// __device__ inline typename OP::RedElTp
-// scanIncWarp( volatile typename OP::RedElTp* ptr, const unsigned int idx ) {
-    
-//     const unsigned int lane = idx & (WARP-1);
-// #ifdef OLD
 
-//     if(lane==0) {
-//         #pragma unroll
-//         for(int i=1; i<WARP; i++) {
-//             ptr[idx+i] = OP::apply(ptr[idx+i-1], ptr[idx+i]);
-//         }
-//     }
-
-// #else
-    
-//     // k = lg(32) = 5
-//     #pragma unroll
-//     for (int d = 0; d < 5; d++){
-//         int h = 1;
-//         for (int k = 0; k < d; k++) {
-//             h *= 2;
-//         }
-//         if (lane >= h){
-//             ptr[idx] = OP::apply(ptr[idx-h], ptr[idx]);
-//         }
-//     }        
-// #endif
-
-//     return OP::remVolatile(ptr[idx]);
-// }
-
-
-// __device__ inline typename OP::RedElTp
-// scanIncBlock(volatile typename OP::RedElTp* ptr, const unsigned int idx) {
-//     const unsigned int lane   = idx & (WARP-1);
-//     const unsigned int warpid = idx >> lgWARP;
-
-//     // 1. perform scan at warp level
-//     typename OP::RedElTp res = scanIncWarp<OP>(ptr,idx);
-//     __syncthreads();
-
-//     // 2. place the end-of-warp results in
-//     //   the first warp. This works because
-//     //   warp size = 32, and 
-//     //   max block size = 32^2 = 1024
-
-//     typename OP::RedElTp tmp;
-//     if (lane == (WARP-1)) { tmp = OP::remVolatile(ptr[idx]); }
-//     __syncthreads();
-
-//     if (lane == (WARP-1)) { ptr[warpid] = tmp; } 
-//     __syncthreads();
-
-//     // 3. scan again the first warp
-//     if (warpid == 0) scanIncWarp<OP>(ptr, idx);
-//     __syncthreads();
-
-//     // 4. accumulate results from previous step;
-//     if (warpid > 0) {
-//         res = OP::apply(ptr[warpid-1], res);
-//     } 
-
-//     return res;
-// }
-// ******************** SCAN FROM ASSIGNMENT 2 ******************** 
-
-
-__global__ void kernel12(unsigned int* d_out, unsigned int* d_in, unsigned int arr_size, unsigned int* d_histogram, int curr_digit){
+__global__ void kernel12(unsigned int* d_out, unsigned int* d_in, uint64_t arr_size, unsigned int* d_histogram, int curr_digit){
     __shared__ unsigned int s_tile[TILE_SIZE];
     __shared__ unsigned int s_tile_sorted[TILE_SIZE];
     __shared__ unsigned int s_histogram[HISTOGRAM_SIZE];
@@ -90,16 +24,16 @@ __global__ void kernel12(unsigned int* d_out, unsigned int* d_in, unsigned int a
     }
 
     for (int i = 0; i < iterations; i++){
-        unsigned int arr_i = gid + i * NUM_THREADS;
-        if (arr_i < arr_size)
+        uint64_t arr_i = gid + i * NUM_THREADS;
+        if (arr_i < arr_size) {
             unsigned int val = d_in[arr_i];
-        
-        // increment histogram
-        unsigned int digit = get_digit(val, curr_digit);
-        atomicAdd(s_histogram + digit, 1);
-        
-        // copy to shared memory
-        s_tile[idx + i * NUM_THREADS] = val;
+            // increment histogram
+            unsigned int digit = get_digit(val, curr_digit);
+            atomicAdd(s_histogram + digit, 1);
+            
+            // copy to shared memory
+            s_tile[idx + i * NUM_THREADS] = val;
+        }
     }
     __syncthreads();
     
@@ -140,21 +74,95 @@ __global__ void kernel12(unsigned int* d_out, unsigned int* d_in, unsigned int a
     // SKAL VI SKRIVE DET SORTEREDE TILBAGE?
     // KAN MAN IKKE BARE LADE DET LIGGE I SHARED OG VENTE TIL STEP 4?
     for (int i = 0; i < iterations; i++){
-        d_out[gid + i * NUM_THREADS] = s_tile_sorted[idx + i * NUM_THREADS]
+        d_out[gid + i * NUM_THREADS] = s_tile_sorted[idx + i * NUM_THREADS];
     }
 }
 
 // 
-__global__ void kernel3(unsigned int* d_out, unsigned int* d_in, unsigned int* d_histogram){
+// __global__ void kernel3(unsigned int* d_out, unsigned int* d_in, unsigned int* d_histogram){
     
-}
+//     cub::DeviceScan::ExclusiveSum()
+
+// }
 
 __global__ void kernel4(unsigned int* d_out, unsigned int* d_in, unsigned int* d_histogram){
 
 }
 
-int main(){
-    unsigned int* vals = (unsigned int*) malloc(10000 * sizeof(unsigned int));
+// form sorting_test.cu
+void randomInitNat(unsigned int* data, const unsigned int size, const unsigned int H) {
+    for (int i = 0; i < size; ++i) {
+        unsigned long int r = rand();
+        data[i] = r % H;
+    }
+}
+
+int main(int argc, char* argv[]){
 
 
+    // unsigned int* vals = (unsigned int*) malloc(10000 * sizeof(unsigned int));
+
+    const uint64_t N = atoi(argv[1]);
+    // TODO: maybe check N if it is too big
+    const uint64_t arr_size = N * sizeof(unsigned int);
+
+    // Host allocations
+    unsigned int* h_in  = (unsigned int*) malloc(arr_size);
+    unsigned int* h_out = (unsigned int*) malloc(arr_size);
+
+    // Create random array to sort
+    randomInitNat(h_in, N, N/10);
+
+    // Compute blocks and block sizes
+    unsigned int num_blocks = (arr_size + TILE_SIZE - 1) / TILE_SIZE;
+
+    // Device allocations
+    unsigned int* d_in;
+    unsigned int* d_out;
+    unsigned int* d_histogram;
+    cudaMalloc((void**)&d_in,  arr_size);
+    cudaMalloc((void**)&d_out, arr_size);
+    cudaMalloc((void**)&d_histogram, num_blocks * HISTOGRAM_SIZE);
+
+    // Copy initial array to device
+    cudaMemcpy(d_in, h_in, arr_size, cudaMemcpyHostToDevice);
+
+    unsigned int* d_res;
+
+    for (int i = 0; i < (sizeof(unsigned int)*8)/B; i++) {
+
+        kernel12<<< num_blocks, NUM_THREADS >>>(d_out, d_in, arr_size, d_histogram, i);
+
+        d_res = d_out;
+        // Swap input input and output
+        unsigned int* tmp = d_out;
+        d_out = d_in;
+        d_in = tmp;
+    }
+
+
+    cudaMemcpy(h_out, d_res, arr_size, cudaMemcpyDeviceToHost);
+
+    printf("h_out:\n");
+    for (int i = 0; i < arr_size; i++) {
+        printf("%i\n", h_out[i]);
+    }
+
+
+    // kernel12
+
+
+
+    // kernel 3
+    // void     *d_temp_storage = NULL;
+    // size_t   temp_storage_bytes = 0;
+    // cub::DeviceScan::ExclusiveSum();
+    
+    
+    // kernel 4
+
+
+    // Clean up memory
+
+    return 0;
 }
