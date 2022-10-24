@@ -78,6 +78,7 @@
 
 __global__ void kernel12(unsigned int* d_out, unsigned int* d_in, unsigned int arr_size, unsigned int* d_histogram, int curr_digit){
     __shared__ unsigned int s_tile[TILE_SIZE];
+    __shared__ unsigned int s_tile_sorted[TILE_SIZE];
     __shared__ unsigned int s_histogram[HISTOGRAM_SIZE];
     int iterations = TILE_SIZE / NUM_THREADS; 
     int idx = threadIdx.x;
@@ -91,14 +92,14 @@ __global__ void kernel12(unsigned int* d_out, unsigned int* d_in, unsigned int a
     for (int i = 0; i < iterations; i++){
         unsigned int arr_i = gid + i * NUM_THREADS;
         if (arr_i < arr_size)
-        unsigned int val = d_in[arr_i];
+            unsigned int val = d_in[arr_i];
         
         // increment histogram
         unsigned int digit = get_digit(val, curr_digit);
         atomicAdd(s_histogram + digit, 1);
         
         // copy to shared memory
-        tile[idx + i * NUM_THREADS] = val;
+        s_tile[idx + i * NUM_THREADS] = val;
     }
     __syncthreads();
     
@@ -122,21 +123,30 @@ __global__ void kernel12(unsigned int* d_out, unsigned int* d_in, unsigned int a
             s_histogram[i] += s_histogram[i-1];
         }
     }
+
+    for (int i  = 0; i < iterations; i++){
+        // foreach val in s_tile
+        unsigned int val = s_tile[idx + i * NUM_THREADS];
+        unsigned int old = atomicAdd(s_histogram + val, 1);
+        s_tile_sorted[old] = val;
+    }
+
     __syncthreads();
+
 
     // SKAL VI SKRIVE DET SORTEREDE TILBAGE?
     // KAN MAN IKKE BARE LADE DET LIGGE I SHARED OG VENTE TIL STEP 4?
     for (int i = 0; i < iterations; i++){
-        
+        d_out[gid + i * NUM_THREADS] = s_tile_sorted[idx + i * NUM_THREADS]
     }
-
 }
 
-__global__ void kernel3(unsigned int* d_out, unsigned int* d_in, unsigned int* histogram){
-
+// 
+__global__ void kernel3(unsigned int* d_out, unsigned int* d_in, unsigned int* d_histogram){
+    
 }
 
-__global__ void kernel4(unsigned int* d_out, unsigned int* d_in, unsigned int* histogram){
+__global__ void kernel4(unsigned int* d_out, unsigned int* d_in, unsigned int* d_histogram){
 
 }
 
