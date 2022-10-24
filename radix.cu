@@ -5,7 +5,7 @@
 #define NUM_THREADS 256
 #define TILE_SIZE 1024
 #define B 4
-#define get_digit(V, I) (V & (0xF << (I * 4)))
+#define get_digit(V, I) ((V >> (I * 4)) & 0xF)
 #define HISTOGRAM_SIZE 16
 #define WARP 32
 
@@ -23,11 +23,14 @@ __global__ void kernel12(unsigned int* d_out, unsigned int* d_in, uint64_t arr_s
         s_histogram[idx] = 0;
     }
 
-    for (int i = 0; i < iterations; i++){
-        uint64_t arr_i = gid + i * NUM_THREADS;
+    __syncthreads();
+
+    // Copy elements from global memory and increment histogram
+    for (int i = 0; i < iterations; i++) {
+        // uint64_t arr_i = gid + i * NUM_THREADS;
+        uint64_t arr_i = blockIdx.x * blockDim.x * B + idx * i * NUM_THREADS;
         if (arr_i < arr_size) {
             unsigned int val = d_in[arr_i];
-            // increment histogram
             unsigned int digit = get_digit(val, curr_digit);
             atomicAdd(s_histogram + digit, 1);
             
@@ -50,39 +53,53 @@ __global__ void kernel12(unsigned int* d_out, unsigned int* d_in, uint64_t arr_s
     // }
 
     if (idx < 16) {
-        d_histogram[gridDim.x * idx + blockIdx.x] = s_histogram[idx];
+        // d_histogram[gridDim.x * idx + blockIdx.x] = s_histogram[idx];
+        d_histogram[gridDim.x * blockIdx.x + idx] = s_histogram[idx];
     }
    
+
+
    __syncthreads();
 
     // exclusive scan over histogram
     // TODO: currently sequential on a single thread
-    // if (idx == 0){
-    //     for (int i = HISTOGRAM_SIZE-1; i > 0; i--){
-    //         s_histogram[i] = s_histogram[i-1];
-    //     }
-    //     s_histogram[0] = 0;
-    //     for (int i = 1; i < HISTOGRAM_SIZE; i++){
-    //         s_histogram[i] += s_histogram[i-1];
-    //     }
-    // }
-    //  __syncthreads();
+    if (idx == 0){
+        for (int i = HISTOGRAM_SIZE-1; i > 0; i--){
+            s_histogram[i] = s_histogram[i-1];
+        }
+        s_histogram[0] = 0;
+        for (int i = 1; i < HISTOGRAM_SIZE; i++){
+            s_histogram[i] += s_histogram[i-1];
+        }
+    }
+     __syncthreads();
 
-    // for (int i  = 0; i < iterations; i++){
-    //     // foreach val in s_tile
-    //     unsigned int val = s_tile[idx + i * NUM_THREADS];
-    //     unsigned int old = atomicAdd(s_histogram + val, 1);
-    //     s_tile_sorted[old] = val;
-    // }
+    for (int i  = 0; i < iterations; i++){
+        // foreach val in s_tile
 
-    // __syncthreads();
+        // unsigned int val = s_tile[idx + i * NUM_THREADS];
+        // unsigned int old = atomicAdd(s_histogram + val, 1);
+
+        unsigned int val   = s_tile[idx + i * NUM_THREADS];
+        unsigned int digit = get_digit(val, curr_digit);
+        unsigned int old   = atomicAdd(s_histogram + digit, 1);
+        s_tile_sorted[old] = val;
+    }
+
+    __syncthreads();
 
 
     // SKAL VI SKRIVE DET SORTEREDE TILBAGE?
     // KAN MAN IKKE BARE LADE DET LIGGE I SHARED OG VENTE TIL STEP 4?
-    // for (int i = 0; i < iterations; i++){
-    //     d_out[gid + i * NUM_THREADS] = s_tile_sorted[idx + i * NUM_THREADS];
-    // }
+    for (int i = 0; i < iterations; i++){
+        // d_out[gid + i * NUM_THREADS] = s_tile_sorted[idx + i * NUM_THREADS];
+        
+        unsigned int index  = idx + i * NUM_THREADS;
+        unsigned int offset = blockIdx.x * blockDim.x * B;
+        if (offset + index < arr_size) {
+            d_out[offset + index] = s_tile_sorted[index];
+        }
+    }
 }
 
 // 
@@ -129,24 +146,32 @@ int main(int argc, char* argv[]){
     unsigned int* d_histogram;
     cudaMalloc((void**)&d_in,  arr_size);
     cudaMalloc((void**)&d_out, arr_size);
-    cudaMalloc((void**)&d_histogram, num_blocks * HISTOGRAM_SIZE);
+    cudaMalloc((void**)&d_histogram, num_blocks * HISTOGRAM_SIZE * sizeof(unsigned int));
 
     // Copy initial array to device
     cudaMemcpy(d_in, h_in, arr_size, cudaMemcpyHostToDevice);
 
-    unsigned int* d_res;
 
+    printf("num blocks: %i\n", num_blocks);
+    printf("num threads: %i\n", num_blocks*NUM_THREADS);
+
+    printf("d_out: %x\n", d_out);
+    printf("d_in : %x\n", d_in);
+
+    unsigned int* d_res;
     for (int i = 0; i < (sizeof(unsigned int)*8)/B; i++) {
 
         kernel12<<< num_blocks, NUM_THREADS >>>(d_out, d_in, N, d_histogram, i);
 
-        d_res = d_out;
         // Swap input input and output
-        unsigned int* tmp = d_out;
+        // unsigned int* tmp = d_out;
+        d_res = d_out;
         d_out = d_in;
-        d_in = tmp;
+        d_in = d_res;
+
     }
 
+    printf("d_res: %x", d_res);
 
     cudaMemcpy(h_out, d_res, arr_size, cudaMemcpyDeviceToHost);
 
