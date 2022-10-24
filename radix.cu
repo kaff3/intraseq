@@ -41,41 +41,48 @@ __global__ void kernel12(unsigned int* d_out, unsigned int* d_in, uint64_t arr_s
     // Because there are 8 warps per block, if for each Warp
     // the two first threads are used, there is better
     // coalesed access.
-    const unsigned int lane = idx & (WARP-1);
-    if (lane == 0 || lane == 1){
-        unsigned int curr_warp = idx / WARP;
-        int histogram_i = curr_warp * 2 + lane;
-        // p = num blocks = gridDim.x
-        d_histogram[gridDim.x * histogram_i + blockIdx.x] = s_histogram[histogram_i];
+    // const unsigned int lane = idx & (WARP-1);
+    // if (lane == 0 || lane == 1){
+    //     unsigned int curr_warp = idx / WARP;
+    //     int histogram_i = curr_warp * 2 + lane;
+    //     // p = num blocks = gridDim.x
+    //     d_histogram[gridDim.x * histogram_i + blockIdx.x] = s_histogram[histogram_i];
+    // }
+
+    if (idx < 16) {
+        d_histogram[gridDim.x * idx + blockIdx.x] = s_histogram[idx];
     }
+   
+   __syncthreads();
 
     // exclusive scan over histogram
     // TODO: currently sequential on a single thread
-    if (idx == 0){
-        for (int i = HISTOGRAM_SIZE-1; i > 0; i--){
-            s_histogram[i] = s_histogram[i-1];
-        }
-        s_histogram[0] = 0;
-        for (int i = 1; i < HISTOGRAM_SIZE; i++){
-            s_histogram[i] += s_histogram[i-1];
-        }
-    }
+    // if (idx == 0){
+    //     for (int i = HISTOGRAM_SIZE-1; i > 0; i--){
+    //         s_histogram[i] = s_histogram[i-1];
+    //     }
+    //     s_histogram[0] = 0;
+    //     for (int i = 1; i < HISTOGRAM_SIZE; i++){
+    //         s_histogram[i] += s_histogram[i-1];
+    //     }
+    // }
+    //  __syncthreads();
 
-    for (int i  = 0; i < iterations; i++){
-        // foreach val in s_tile
-        unsigned int val = s_tile[idx + i * NUM_THREADS];
-        unsigned int old = atomicAdd(s_histogram + val, 1);
-        s_tile_sorted[old] = val;
-    }
+    // for (int i  = 0; i < iterations; i++){
+    //     // foreach val in s_tile
+    //     unsigned int val = s_tile[idx + i * NUM_THREADS];
+    //     unsigned int old = atomicAdd(s_histogram + val, 1);
+    //     s_tile_sorted[old] = val;
+    // }
 
-    __syncthreads();
+    // __syncthreads();
 
 
     // SKAL VI SKRIVE DET SORTEREDE TILBAGE?
     // KAN MAN IKKE BARE LADE DET LIGGE I SHARED OG VENTE TIL STEP 4?
-    for (int i = 0; i < iterations; i++){
-        d_out[gid + i * NUM_THREADS] = s_tile_sorted[idx + i * NUM_THREADS];
-    }
+    // for (int i = 0; i < iterations; i++){
+    //     d_out[gid + i * NUM_THREADS] = s_tile_sorted[idx + i * NUM_THREADS];
+    // }
 }
 
 // 
@@ -143,10 +150,10 @@ int main(int argc, char* argv[]){
 
     cudaMemcpy(h_out, d_res, arr_size, cudaMemcpyDeviceToHost);
 
-    printf("h_out:\n");
     for (int i = 0; i < N; i++) {
-        printf("%i      %i\n", h_out[i], h_in[i]);
+        printf("%10i      %10i\n", h_out[i], h_in[i]);
     }
+
 
 
     // kernel12
