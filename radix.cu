@@ -147,7 +147,7 @@ int main(int argc, char* argv[]){
     unsigned int* h_out = (unsigned int*) malloc(arr_size);
 
     // Create random array to sort
-    randomInitNat(h_in, N, 0xFF);
+    randomInitNat(h_in, N, N);
 
     // Compute blocks and block sizes
     unsigned int num_blocks = (N + TILE_SIZE - 1) / TILE_SIZE;
@@ -172,7 +172,7 @@ int main(int argc, char* argv[]){
 
     unsigned int* d_res;
     for (int i = 0; i < (sizeof(unsigned int)*8)/B; i++) {
-
+        printf("=============================================\n");
         kernel12<<< num_blocks, NUM_THREADS >>>(d_out, d_in, N, d_histogram, i);
 
         // Swap input input and output
@@ -186,7 +186,10 @@ int main(int argc, char* argv[]){
         d_in  = d_out;
         d_out = d_res;
 
-        // cudaMemset(d_histogram, 0, num_blocks*HISTOGRAM_SIZE*sizeof(int));
+        cudaMemcpy(h_out, d_res, arr_size, cudaMemcpyDeviceToHost);
+        for (int i = 0; i < N; i++) {
+            printf("%10x      %10x\n", h_out[i], h_in[i]);
+        }
     }
     // kernel12<<< num_blocks, NUM_THREADS >>>(d_out, d_in, N, d_histogram, 0);
 
@@ -195,7 +198,7 @@ int main(int argc, char* argv[]){
     cudaMemcpy(h_out, d_res, arr_size, cudaMemcpyDeviceToHost);
 
     for (int i = 0; i < N; i++) {
-        printf("%10i      %10i\n", h_out[i], h_in[i]);
+        printf("%10x      %10x\n", h_out[i], h_in[i]);
     }
 
 
