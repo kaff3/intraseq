@@ -1,6 +1,6 @@
 //#include "../../cub-1.8.0/cub/cub.cuh"   // or equivalently <cub/device/device_histogram.cuh>
-#include "cub.cuh"
-#include "helper.cu.h"
+#include "cub/cub.cuh"
+#include "./helper.cu.h"
 
 template<class Z>
 bool validateZ(Z* A, uint32_t sizeAB) {
