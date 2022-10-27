@@ -2,7 +2,7 @@
 #include <cooperative_groups.h>
 #include <stdint.h>
 
-#include "cub/device/device_scan.cuh"
+#include "cub/cub.cuh"
 
 
 #define THREAD_ELEMENTS     4   // 
@@ -16,7 +16,6 @@
 
 
 __global__ void kernel12(unsigned int* d_out, unsigned int* d_in, uint64_t arr_size, unsigned int* d_histogram, int curr_digit){
-    // int idx = threadIdx.x;
 
     __shared__ unsigned int s_tile[TILE_SIZE];
 
@@ -62,24 +61,39 @@ __global__ void kernel12(unsigned int* d_out, unsigned int* d_in, uint64_t arr_s
         __syncthreads();
 
 
-        static const int num_positions = 2 * NUM_THREADS;
-        __shared__ unsigned int positions[num_positions];
+        // ======== OLD ==========
+        // static const int num_positions = 2 * NUM_THREADS;
+        // __shared__ unsigned int positions[num_positions];
 
-        // Write positions to shared memory to prepare for scan
-        positions[threadIdx.x]              = ps0;
-        positions[blockDim.x + threadIdx.x] = ps1;
-        __syncthreads();
+        // // Write positions to shared memory to prepare for scan
+        // positions[threadIdx.x]              = ps0;
+        // positions[blockDim.x + threadIdx.x] = ps1;
+        // __syncthreads();
 
         // Perform scan. TODO: Make it not sequential
-        if (threadIdx.x == 0) {
-            for (int j = 1; j < num_positions; j++) {
-                positions[j] += positions[j-1];
-            }
-        }
+        // if (threadIdx.x == 0) {
+        //     for (int j = 1; j < num_positions; j++) {
+        //         positions[j] += positions[j-1];
+        //     }
+        // }
+
+        // ps0 = (threadIdx.x == 0 ? 0 : positions[threadIdx.x - 1]);
+        // ps1 = positions[blockDim.x + threadIdx.x - 1];
+
+        // ========= NEW ============
+        // Perform a scan across threads
+        typedef cub::BlockScan<unsigned int, NUM_THREADS> BlockScan;
+
+        __shared__ typename BlockScan::TempStorage ps0_storage;
+        __shared__ typename BlockScan::TempStorage ps1_storage;
+        __shared__ unsigned int aggregate;
+
+        BlockScan(ps0_storage).ExclusiveScan(ps0, ps0, 0, cub::Sum(), aggregate);
+        __syncthreads();
+        BlockScan(ps1_storage).ExclusiveScan(ps1, ps1, aggregate, cub::Sum());
         __syncthreads();
 
-        ps0 = (threadIdx.x == 0 ? 0 : positions[threadIdx.x - 1]);
-        ps1 = positions[blockDim.x + threadIdx.x - 1];
+
 
         // Sort by scattering
         #pragma unroll
@@ -106,21 +120,23 @@ __global__ void kernel12(unsigned int* d_out, unsigned int* d_in, uint64_t arr_s
     }
     __syncthreads();
 
-        
+
     // Compute final histogram
-    for (int i = 0; i < TILE_SIZE; i++) {
-        // TODO: Fix so the mask 0xF is based of B, ie the number of bits in digit
-        unsigned int digit = GET_DIGIT(s_tile[i], curr_digit*B, 0xF);
-        atomicAdd(s_histogram + digit, 1);
+    for (int i = 0; i < THREAD_ELEMENTS; i++) {
+        unsigned int index = threadIdx.x * THREAD_ELEMENTS + i;
+        if (index < arr_size) {
+            unsigned int digit = GET_DIGIT(elements[i], curr_digit*B+1, 0xF); // TODO: Fix mask somehow
+            atomicAdd(s_histogram + digit, 1);
+        }
     }
+    __syncthreads();
 
     // Write histogram to global memory
     if (threadIdx.x < HISTOGRAM_SIZE) {
         d_histogram[gridDim.x * threadIdx.x + blockIdx.x] = s_histogram[threadIdx.x];
     }
-    __syncthreads();
 
-    // Write sorted til back to global memory. coalesced
+    // Write sorted tile back to global memory. coalesced
     for (int i = 0; i < THREAD_ELEMENTS; i++) {
         unsigned int s_index = threadIdx.x + blockDim.x * i;
         unsigned int d_index = blockIdx.x * TILE_SIZE + s_index;
@@ -177,19 +193,12 @@ int main(int argc, char* argv[]){
         kernel12<<< num_blocks, NUM_THREADS >>>(d_out, d_in, N, d_histogram, i);
 
         // Swap input input and output
-        // unsigned int* tmp = d_out;
-        
-        // d_res = d_out;
-        // d_out = d_in;
-        // d_in  = d_res;
-
         unsigned int* tmp;
         tmp = d_in;
         d_in  = d_out;
         d_out = tmp;
     }
 
-    // kernel12<<< num_blocks, NUM_THREADS >>>(d_out, d_in, N, d_histogram, 0);
 
     // Copy from device to print result
     cudaMemcpy(h_out, d_out, arr_size, cudaMemcpyDeviceToHost);
