@@ -54,14 +54,13 @@ __device__ void countBits(unsigned int* elements, unsigned int* ps0, unsigned in
     }
 }
 
-__device__ void countDigits(unsigned int* elements, unsigned int* ps0, unsigned int* ps1, uint64_t arr_size, int curr_digit) {
+__device__ void countDigits(unsigned int* elements, unsigned int* histo, uint64_t tile_size, int curr_digit) {
     #pragma unroll
     for (int j = 0; j < THREAD_ELEMENTS; j++) {
         unsigned int index = threadIdx.x * THREAD_ELEMENTS + j;
-        if (index < arr_size) {
-            unsigned int bit = GET_DIGIT(elements[j], curr_digit*B, 0xF);
-            *ps0 += (bit == 0 ? 1 : 0);
-            *ps1 += (bit == 1 ? 1 : 0);
+        if (index < tile_size) {
+            unsigned int val = GET_DIGIT(elements[j], curr_digit*B, 0xF);
+            histo[val] += 1;
         }
     }
 }
@@ -92,7 +91,7 @@ __global__ void kernel12(unsigned int* d_in, unsigned int* d_out, uint64_t input
     unsigned int last_tile_id = ((input_arr_size + TILE_SIZE - 1) / TILE_SIZE) - 1;
     unsigned int size_of_last_tile = input_arr_size % TILE_SIZE;
     unsigned int tile_id = blockIdx.x * TILE_SIZE;
-    unsigned int local_tile_size = tile_id == last_tile_id ? size_of_last_tile : TILE_SIZE; 
+    unsigned int local_tile_size = tile_id == last_tile_id ? size_of_last_tile : TILE_SIZE;
 
     // Sort in shared memory b iterations of 1-bit split
     unsigned int elements[THREAD_ELEMENTS];
@@ -166,13 +165,21 @@ __global__ void kernel12(unsigned int* d_in, unsigned int* d_out, uint64_t input
     }
 }
 
-__global__ void globalScatter(unsigned int* d_in, unsigned int* d_out, unsigned int arr_size, unsigned int* d_histogram, int curr_digit) {
+__global__ void globalScatter(unsigned int* d_in, unsigned int* d_out, unsigned int input_arr_size, 
+                              unsigned int* d_histogram, int curr_digit) {
+    // find the size of the local tile for bounds checking
+    unsigned int last_tile_id = ((input_arr_size + TILE_SIZE - 1) / TILE_SIZE) - 1;
+    unsigned int size_of_last_tile = input_arr_size % TILE_SIZE;
+    unsigned int tile_id = blockIdx.x * TILE_SIZE;
+    unsigned int local_tile_size = tile_id == last_tile_id ? size_of_last_tile : TILE_SIZE;
+
+    
     // Read memory to shared first again
     __shared__ unsigned int s_tile[TILE_SIZE];
-    loadTile(d_in, arr_size, s_tile);
+    loadTile(d_in, input_arr_size, s_tile);
     __syncthreads();
     unsigned int elements[THREAD_ELEMENTS];
-    loadThreadElements(elements, arr_size, s_tile);
+    loadThreadElements(elements, input_arr_size, s_tile);
     __syncthreads();
     // Read the now scanned histogram back into shared such that we have faster
     // access to it and can update it faster. As the histogram were written to global
@@ -184,23 +191,35 @@ __global__ void globalScatter(unsigned int* d_in, unsigned int* d_out, unsigned 
     }
     __syncthreads();
     // positions for each digit
-    unsigned int ps[HISTOGRAM_SIZE] = {0}; // should zero initialize
-    for (int i = 0; i < HISTOGRAM_SIZE; i++) {
-        countDigits(elements, ps[i], arr_size, curr_digit);
+    unsigned int ps[HISTOGRAM_SIZE];
+    if (threadIdx.x < HISTOGRAM_SIZE){
+        ps[threadIdx.x] = 0;
     }
     __syncthreads();
-    for(int i = 0; i < ; i++) {
-        scanPositions(ps0, unsigned int* ps1, unsigned int init)
-    }
+
+    countDigits(elements, ps, local_tile_size, curr_digit);
+    __syncthreads();
+
+    typedef cub::BlockScan<unsigned int, NUM_THREADS> BlockScan;
+
+    __shared__ typename BlockScan::TempStorage ps_tmp[HISTOGRAM_SIZE];
+    // unsigned int aggregate = 0;
+    
+    for (int i = 0; i < HISTOGRAM_SIZE; i++){
+        unsigned int offset = s_histogram[i];
+        BlockScan(ps_tmp[i]).ExclusiveScan(ps[i], ps[i], offset, cub::Sum());
+    }    
+
+
     // Can now perform the scatter back into global memory. This is going to be done
     // in a strided way.
     for (int i = 0; i < THREAD_ELEMENTS; i++) {
         unsigned int s_index = threadIdx.x + i * blockDim.x;
         unsigned int d_index = blockIdx.x * TILE_SIZE + s_index;
-        if (d_index < arr_size) {
-            unsigned int val   = s_tile[threadIdx.x];
+        if (d_index < input_arr_size) {
+            unsigned int val   = elements[i];
             unsigned int digit = GET_DIGIT(val, curr_digit*B, 0xF);
-            unsigned int old   = atomicAdd(s_histogram + digit, 1);
+            unsigned int old   = atomicAdd(ps + digit, 1);
             d_out[old] = val;
         }
     }
