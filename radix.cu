@@ -2,128 +2,211 @@
 #include <cooperative_groups.h>
 #include <stdint.h>
 
-#include "cub/device/device_scan.cuh"
-
-#define NUM_THREADS 256
-#define TILE_SIZE 1024
-#define B 4
-#define get_digit(V, I) ((V >> (I * 4)) & 0xF)
-#define HISTOGRAM_SIZE 16
-#define WARP 32
+#include "cub/cub.cuh"
 
 
-__global__ void kernel12(unsigned int* d_out, unsigned int* d_in, uint64_t arr_size, unsigned int* d_histogram, int curr_digit){
+#define THREAD_ELEMENTS     4   // 
+#define NUM_THREADS         256
+#define TILE_SIZE           (NUM_THREADS * THREAD_ELEMENTS)
+#define B                   4
+#define HISTOGRAM_SIZE      16  // 2^B
+#define GET_DIGIT(V, I, M)  ((V >> I) & M)
+
+// #define NUM_POSITIONS       (NUM_THREADS * 2)
+
+
+//========================================
+// ====== Helper device functions =======
+//========================================
+
+
+__device__ void loadTile(unsigned int* d_in, uint64_t input_arr_size, unsigned int* tile) {
+    #pragma unroll
+    for (int i = 0; i < THREAD_ELEMENTS; i++) {
+        unsigned int s_index = threadIdx.x + i * blockDim.x;
+        unsigned int d_index = blockIdx.x * TILE_SIZE + s_index;
+        if (d_index < input_arr_size) {
+            tile[s_index] = d_in[d_index];
+        }
+    }
+}
+
+__device__ void loadThreadElements(unsigned int* elements, uint64_t tile_size, unsigned int* tile) {
+    #pragma unroll
+    for (int j = 0; j < THREAD_ELEMENTS; j++) {
+        unsigned index = threadIdx.x * THREAD_ELEMENTS + j;
+        if (index < tile_size) {
+            elements[j] = tile[index];
+        }
+    }
+}
+
+__device__ void countBits(unsigned int* elements, unsigned int* ps0, unsigned int* ps1, 
+                          uint64_t tile_size, int curr_digit, int i) {
+    #pragma unroll
+    for (int j = 0; j < THREAD_ELEMENTS; j++) {
+        unsigned int index = threadIdx.x * THREAD_ELEMENTS + j;
+        if (index < tile_size) {
+            unsigned int bit = GET_DIGIT(elements[j], curr_digit*B+i, 0x1);
+            *ps0 += (bit == 0 ? 1 : 0);
+            *ps1 += (bit == 1 ? 1 : 0);
+        }
+    }
+}
+
+__device__ void countDigits(unsigned int* elements, unsigned int* ps0, unsigned int* ps1, uint64_t arr_size, int curr_digit) {
+    #pragma unroll
+    for (int j = 0; j < THREAD_ELEMENTS; j++) {
+        unsigned int index = threadIdx.x * THREAD_ELEMENTS + j;
+        if (index < arr_size) {
+            unsigned int bit = GET_DIGIT(elements[j], curr_digit*B, 0xF);
+            *ps0 += (bit == 0 ? 1 : 0);
+            *ps1 += (bit == 1 ? 1 : 0);
+        }
+    }
+}
+
+__device__ void scanPositions(unsigned int* ps0, unsigned int* ps1, unsigned int init) {
+    typedef cub::BlockScan<unsigned int, NUM_THREADS> BlockScan;
+
+    __shared__ union {
+        typename BlockScan::TempStorage ps0;
+        typename BlockScan::TempStorage ps1;
+    } ps_storage;
+    unsigned int aggregate;
+
+    BlockScan(ps_storage.ps0).ExclusiveScan(*ps0, *ps0, init, cub::Sum(), aggregate);
+    BlockScan(ps_storage.ps1).ExclusiveScan(*ps1, *ps1, aggregate, cub::Sum());
+}
+
+
+__global__ void kernel12(unsigned int* d_in, unsigned int* d_out, uint64_t input_arr_size, 
+                         unsigned int* d_histogram, int curr_digit){
+
+    // Load to shared memory
     __shared__ unsigned int s_tile[TILE_SIZE];
-    __shared__ unsigned int s_tile_sorted[TILE_SIZE];
-    __shared__ unsigned int s_histogram[HISTOGRAM_SIZE];
-    int iterations = TILE_SIZE / NUM_THREADS; 
-    int idx = threadIdx.x;
-    // int gid = blockDim.x * blockIdx.x + threadIdx.x; 
+    loadTile(d_in, input_arr_size, s_tile);
+    __syncthreads();
+
+    // find the size of the local tile for bounds checking
+    unsigned int last_tile_id = ((input_arr_size + TILE_SIZE - 1) / TILE_SIZE) - 1;
+    unsigned int size_of_last_tile = input_arr_size % TILE_SIZE;
+    unsigned int tile_id = blockIdx.x * TILE_SIZE;
+    unsigned int local_tile_size = tile_id == last_tile_id ? size_of_last_tile : TILE_SIZE; 
+
+    // Sort in shared memory b iterations of 1-bit split
+    unsigned int elements[THREAD_ELEMENTS];
+    for (int i = 0; i < B; i++) {
+
+        // Read elements
+        loadThreadElements(elements, local_tile_size, s_tile);
+        // __syncthreads();
+
+        // Count bits
+        unsigned int ps0 = 0;
+        unsigned int ps1 = 0;
+        countBits(elements, &ps0, &ps1, local_tile_size, curr_digit, i);
+        __syncthreads();
+
+        // Perform a blockwise scan across threads
+        scanPositions(&ps0, &ps1, 0);
+
+        // Sort by scattering
+        #pragma unroll
+        for (int j = 0; j < THREAD_ELEMENTS; j++) {
+            unsigned int index = threadIdx.x * THREAD_ELEMENTS + j;
+            if (index < local_tile_size) {
+                unsigned int bit = GET_DIGIT(elements[j], curr_digit*B+i, 0x1);
+                unsigned int pos = (bit == 0 ? ps0 : ps1);
+                ps0 += (bit == 0 ? 1 : 0);
+                ps1 += (bit == 1 ? 1 : 0);
+                s_tile[pos] = elements[j];
+            }
+        }
+        __syncthreads(); // For next iteration
+
+    } // Big loop end
+
 
     // zero initialize histogram
-    if (idx < HISTOGRAM_SIZE){
-        s_histogram[idx] = 0;
+    __shared__ unsigned int s_histogram[HISTOGRAM_SIZE];
+    if (threadIdx.x < HISTOGRAM_SIZE){
+        s_histogram[threadIdx.x] = 0;
     }
     __syncthreads();
 
 
-
-    // Copy elements from global memory and increment histogram
-    for (int i = 0; i < iterations; i++) {
-        // uint64_t arr_i = gid + i * NUM_THREADS;
-        uint64_t arr_i = blockIdx.x * blockDim.x * B + (idx + i * NUM_THREADS);
-        if (arr_i < arr_size) {
-            unsigned int val = d_in[arr_i];
-            unsigned int digit = get_digit(val, curr_digit);
+    // Compute final histogram
+    #pragma unroll
+    for (int i = 0; i < THREAD_ELEMENTS; i++) {
+        unsigned int index = threadIdx.x * THREAD_ELEMENTS + i;
+        if (index < local_tile_size) {
+            unsigned int digit = GET_DIGIT(elements[i], curr_digit*B, 0xF); // TODO: Fix mask somehow
             atomicAdd(s_histogram + digit, 1);
-            
-            // copy to shared memory
-            s_tile[idx + i * NUM_THREADS] = val;
         }
-    } __syncthreads();
-    
-    // copy local histogram to global memory transposed
-    // Because there are 8 warps per block, if for each Warp
-    // the two first threads are used, there is better
-    // coalesed access.
-    // const unsigned int lane = idx & (WARP-1);
-    // if (lane == 0 || lane == 1){
-    //     unsigned int curr_warp = idx / WARP;
-    //     int histogram_i = curr_warp * 2 + lane;
-    //     // p = num blocks = gridDim.x
-    //     d_histogram[gridDim.x * histogram_i + blockIdx.x] = s_histogram[histogram_i];
-    // }
+    }
+    __syncthreads();
 
-    if (idx < 16) {
-        d_histogram[gridDim.x * idx + blockIdx.x] = s_histogram[idx];
-    } __syncthreads();
 
-    // if (idx == 0) {
-    //     printf("s_histogram original\n");
-    //     for (int i = 0; i < HISTOGRAM_SIZE; i++) {
-    //         printf("his[%3i] = %3i\n", i, s_histogram[i]);
-    //     }
-    // } __syncthreads();
+    // Write histogram to global memory transposed
+    if (threadIdx.x < HISTOGRAM_SIZE) {
+        d_histogram[gridDim.x * threadIdx.x + blockIdx.x] = s_histogram[threadIdx.x];
+        // d_histogram[gridDim.x * blockIdx.x + threadIdx.x] = s_histogram[threadIdx.x];
+    }
 
-    // exclusive scan over histogram
-    // TODO: currently sequential on a single thread
-    if (idx == 0){
-        for (int i = HISTOGRAM_SIZE-1; i > 0; i--){
-            s_histogram[i] = s_histogram[i-1];
+
+    // Write sorted tile back to global memory. coalesced
+    #pragma unroll
+    for (int i = 0; i < THREAD_ELEMENTS; i++) {
+        unsigned int s_index = threadIdx.x + blockDim.x * i;
+        unsigned int d_index = blockIdx.x * TILE_SIZE + s_index;
+        if (d_index < input_arr_size) {
+            d_out[d_index] = s_tile[s_index];
         }
-        s_histogram[0] = 0;
-        for (int i = 1; i < HISTOGRAM_SIZE; i++){
-            s_histogram[i] += s_histogram[i-1];
-        }
-    } __syncthreads();
+    }
+}
 
-
-    // if (idx == 0) {
-    //     printf("s_histogram scanned\n");
-    //     for (int i = 0; i < HISTOGRAM_SIZE; i++) {
-    //         printf("his[%3i] = %3i\n", i, s_histogram[i]);
-    //     }
-    // } __syncthreads();
-
-    for (int i  = 0; i < iterations; i++){
-        // foreach val in s_tile
-
-        // unsigned int val = s_tile[idx + i * NUM_THREADS];
-        // unsigned int old = atomicAdd(s_histogram + val, 1);
-
-        unsigned int index = idx + i * NUM_THREADS;
-        if (index < arr_size) {
-            unsigned int val   = s_tile[index];
-            unsigned int digit = get_digit(val, curr_digit);
+__global__ void globalScatter(unsigned int* d_in, unsigned int* d_out, unsigned int arr_size, unsigned int* d_histogram, int curr_digit) {
+    // Read memory to shared first again
+    __shared__ unsigned int s_tile[TILE_SIZE];
+    loadTile(d_in, arr_size, s_tile);
+    __syncthreads();
+    unsigned int elements[THREAD_ELEMENTS];
+    loadThreadElements(elements, arr_size, s_tile);
+    __syncthreads();
+    // Read the now scanned histogram back into shared such that we have faster
+    // access to it and can update it faster. As the histogram were written to global
+    // transposed, it cannot be read back in coalesced.
+    __shared__ unsigned int s_histogram[HISTOGRAM_SIZE];
+    if (threadIdx.x < HISTOGRAM_SIZE) {
+        unsigned int d_index = gridDim.x * threadIdx.x + blockIdx.x;
+        s_histogram[threadIdx.x] = d_histogram[d_index];
+    }
+    __syncthreads();
+    // positions for each digit
+    unsigned int ps[HISTOGRAM_SIZE] = {0}; // should zero initialize
+    for (int i = 0; i < HISTOGRAM_SIZE; i++) {
+        countDigits(elements, ps[i], arr_size, curr_digit);
+    }
+    __syncthreads();
+    for(int i = 0; i < ; i++) {
+        scanPositions(ps0, unsigned int* ps1, unsigned int init)
+    }
+    // Can now perform the scatter back into global memory. This is going to be done
+    // in a strided way.
+    for (int i = 0; i < THREAD_ELEMENTS; i++) {
+        unsigned int s_index = threadIdx.x + i * blockDim.x;
+        unsigned int d_index = blockIdx.x * TILE_SIZE + s_index;
+        if (d_index < arr_size) {
+            unsigned int val   = s_tile[threadIdx.x];
+            unsigned int digit = GET_DIGIT(val, curr_digit*B, 0xF);
             unsigned int old   = atomicAdd(s_histogram + digit, 1);
-            s_tile_sorted[old] = val;
+            d_out[old] = val;
         }
-    } __syncthreads();
-
-
-    // SKAL VI SKRIVE DET SORTEREDE TILBAGE?
-    // KAN MAN IKKE BARE LADE DET LIGGE I SHARED OG VENTE TIL STEP 4?
-    for (int i = 0; i < iterations; i++){
-        // d_out[gid + i * NUM_THREADS] = s_tile_sorted[idx + i * NUM_THREADS];
-        
-        unsigned int index  = idx + i * NUM_THREADS;
-        unsigned int offset = blockIdx.x * blockDim.x * B;
-        if (offset + index < arr_size) {
-            d_out[offset + index] = s_tile_sorted[index];
-        }
-    } __syncthreads();
+    }
 }
 
-// 
-// __global__ void kernel3(unsigned int* d_out, unsigned int* d_in, unsigned int* d_histogram){
-    
-//     cub::DeviceScan::ExclusiveSum()
 
-// }
-
-__global__ void kernel4(unsigned int* d_out, unsigned int* d_in, unsigned int* d_histogram){
-
-}
 
 // form sorting_test.cu
 void randomInitNat(unsigned int* data, const unsigned int size, const unsigned int H) {
@@ -135,8 +218,7 @@ void randomInitNat(unsigned int* data, const unsigned int size, const unsigned i
 
 int main(int argc, char* argv[]){
 
-
-    // unsigned int* vals = (unsigned int*) malloc(10000 * sizeof(unsigned int));
+    if (argc < 2) { printf("Hey, don't you think it would be smart to give me an argument?\n"); return 0; }
 
     const uint64_t N = atoi(argv[1]);
     // TODO: maybe check N if it is too big
@@ -156,67 +238,65 @@ int main(int argc, char* argv[]){
     unsigned int* d_in;
     unsigned int* d_out;
     unsigned int* d_histogram;
+    unsigned int* d_histogram_scanned;
     cudaMalloc((void**)&d_in,  arr_size);
     cudaMalloc((void**)&d_out, arr_size);
     cudaMalloc((void**)&d_histogram, num_blocks * HISTOGRAM_SIZE * sizeof(unsigned int));
+    cudaMalloc((void**)&d_histogram_scanned, num_blocks * HISTOGRAM_SIZE * sizeof(unsigned int));
 
     // Copy initial array to device
     cudaMemcpy(d_in, h_in, arr_size, cudaMemcpyHostToDevice);
 
 
-    printf("num blocks: %i\n", num_blocks);
+    printf("num blocks:  %i\n", num_blocks);
     printf("num threads: %i\n", num_blocks*NUM_THREADS);
+    printf("tile size:   %i\n", TILE_SIZE);
 
-    printf("d_out: %x\n", d_out);
-    printf("d_in : %x\n", d_in);
 
-    unsigned int* d_res;
     for (int i = 0; i < (sizeof(unsigned int)*8)/B; i++) {
-        printf("=============================================\n");
-        kernel12<<< num_blocks, NUM_THREADS >>>(d_out, d_in, N, d_histogram, i);
+        // kernel 1 + 2
+        kernel12<<< num_blocks, NUM_THREADS >>>(d_in, d_out, N, d_histogram, i);
+        cudaDeviceSynchronize();
+    
 
-        // Swap input input and output
-        // unsigned int* tmp = d_out;
-        
-        // d_res = d_out;
-        // d_out = d_in;
-        // d_in  = d_res;
+        // Perform device wide scan over histogram (kernel 3)
+        void* d_tmp_storage = NULL;
+        size_t tmp_storage_bytes = 0;
+        // cub::DeviceScan::ExclusiveSum(d_tmp_storage, tmp_storage_bytes, d_histogram, d_histogram_scanned, HISTOGRAM_SIZE*num_blocks);
+        cub::DeviceScan::ExclusiveScan(d_tmp_storage, tmp_storage_bytes, d_histogram, d_histogram_scanned, cub::Sum(), 0, HISTOGRAM_SIZE*num_blocks);
+        // cudaDeviceSynchronize();
+        cudaMalloc(&d_tmp_storage, tmp_storage_bytes);
+        // cub::DeviceScan::ExclusiveSum(d_tmp_storage, tmp_storage_bytes, d_histogram, d_histogram_scanned, HISTOGRAM_SIZE*num_blocks);
+        cub::DeviceScan::ExclusiveScan(d_tmp_storage, tmp_storage_bytes, d_histogram, d_histogram_scanned, cub::Sum(), 0, HISTOGRAM_SIZE*num_blocks);
+        cudaFree(d_tmp_storage); // TODO: Should we free this or does it happen automatically?
+        cudaDeviceSynchronize();
 
-        d_res = d_in;
-        d_in  = d_out;
-        d_out = d_res;
+        // kernel 4
+        globalScatter<<< num_blocks, NUM_THREADS >>>(d_out, d_in, N, d_histogram_scanned, i);
+        cudaMemset(d_histogram_scanned, 0, sizeof(unsigned int)*HISTOGRAM_SIZE*num_blocks);
+        cudaDeviceSynchronize();
 
-        cudaMemcpy(h_out, d_res, arr_size, cudaMemcpyDeviceToHost);
-        for (int i = 0; i < N; i++) {
-            printf("%10x      %10x\n", h_out[i], h_in[i]);
-        }
+        // Swap input input and output. This is not needed when final kernel is implemented
+        // unsigned int* tmp;
+        // tmp = d_in;
+        // d_in  = d_out;
+        // d_out = tmp;
     }
-    // kernel12<<< num_blocks, NUM_THREADS >>>(d_out, d_in, N, d_histogram, 0);
 
-    printf("d_res: %x\n", d_res);
 
-    cudaMemcpy(h_out, d_res, arr_size, cudaMemcpyDeviceToHost);
-
+    // Copy from device to print result
+    cudaMemcpy(h_out, d_in, arr_size, cudaMemcpyDeviceToHost);
     for (int i = 0; i < N; i++) {
         printf("%10x      %10x\n", h_out[i], h_in[i]);
     }
 
-
-
-    // kernel12
-
-
-
-    // kernel 3
-    // void     *d_temp_storage = NULL;
-    // size_t   temp_storage_bytes = 0;
-    // cub::DeviceScan::ExclusiveSum();
-    
-    
-    // kernel 4
-
-
     // Clean up memory
+    cudaFree(d_in);
+    cudaFree(d_out);
+    cudaFree(d_histogram);
+    cudaFree(d_histogram_scanned);
+    free(h_in);
+    free(h_out);
 
     return 0;
 }
