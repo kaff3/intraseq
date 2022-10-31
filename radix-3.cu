@@ -90,7 +90,8 @@ __global__ void kernel12(unsigned int* d_in, unsigned int* d_out, uint64_t input
     // find the size of the local tile for bounds checking
     unsigned int last_tile_id = ((input_arr_size + TILE_SIZE - 1) / TILE_SIZE) - 1;
     unsigned int size_of_last_tile = input_arr_size % TILE_SIZE;
-    unsigned int tile_id = blockIdx.x * TILE_SIZE;
+    unsigned int tile_id = blockIdx.x;
+    size_of_last_tile = size_of_last_tile == 0 ? TILE_SIZE : size_of_last_tile;
     unsigned int local_tile_size = tile_id == last_tile_id ? size_of_last_tile : TILE_SIZE;
 
     // Sort in shared memory b iterations of 1-bit split
@@ -170,7 +171,8 @@ __global__ void globalScatter(unsigned int* d_in, unsigned int* d_out, unsigned 
     // find the size of the local tile for bounds checking
     unsigned int last_tile_id = ((input_arr_size + TILE_SIZE - 1) / TILE_SIZE) - 1;
     unsigned int size_of_last_tile = input_arr_size % TILE_SIZE;
-    unsigned int tile_id = blockIdx.x * TILE_SIZE;
+    size_of_last_tile = size_of_last_tile == 0 ? TILE_SIZE : size_of_last_tile;
+    unsigned int tile_id = blockIdx.x;
     unsigned int local_tile_size = tile_id == last_tile_id ? size_of_last_tile : TILE_SIZE;
 
     
@@ -178,9 +180,11 @@ __global__ void globalScatter(unsigned int* d_in, unsigned int* d_out, unsigned 
     __shared__ unsigned int s_tile[TILE_SIZE];
     loadTile(d_in, input_arr_size, s_tile);
     __syncthreads();
+
     unsigned int elements[THREAD_ELEMENTS];
     loadThreadElements(elements, local_tile_size, s_tile);
     __syncthreads();
+
     // Read the now scanned histogram back into shared such that we have faster
     // access to it and can update it faster. As the histogram were written to global
     // transposed, it cannot be read back in coalesced.
@@ -190,11 +194,9 @@ __global__ void globalScatter(unsigned int* d_in, unsigned int* d_out, unsigned 
         s_histogram[threadIdx.x] = d_histogram[d_index];
     }
     __syncthreads();
+
     // positions for each digit
-    unsigned int ps[HISTOGRAM_SIZE];
-    if (threadIdx.x < HISTOGRAM_SIZE){
-        ps[threadIdx.x] = 0;
-    }
+    unsigned int ps[HISTOGRAM_SIZE] = {0};
     __syncthreads();
 
     countDigits(elements, ps, local_tile_size, curr_digit);
@@ -202,24 +204,28 @@ __global__ void globalScatter(unsigned int* d_in, unsigned int* d_out, unsigned 
 
     typedef cub::BlockScan<unsigned int, NUM_THREADS> BlockScan;
 
-    __shared__ typename BlockScan::TempStorage ps_tmp[HISTOGRAM_SIZE];
     // unsigned int aggregate = 0;
     
     for (int i = 0; i < HISTOGRAM_SIZE; i++){
+        __shared__ typename BlockScan::TempStorage ps_tmp;
         unsigned int offset = s_histogram[i];
-        BlockScan(ps_tmp[i]).ExclusiveScan(ps[i], ps[i], offset, cub::Sum());
-    }    
+        BlockScan(ps_tmp).ExclusiveScan(ps[i], ps[i], offset, cub::Sum());
+    }
+    __syncthreads();   
 
 
     // Can now perform the scatter back into global memory. This is going to be done
     // in a strided way.
     for (int i = 0; i < THREAD_ELEMENTS; i++) {
-        unsigned int s_index = threadIdx.x + i * blockDim.x;
+        // unsigned int s_index = threadIdx.x + i * blockDim.x;
+        unsigned int s_index = threadIdx.x * THREAD_ELEMENTS + i;
         unsigned int d_index = blockIdx.x * TILE_SIZE + s_index;
         if (d_index < input_arr_size) {
             unsigned int val   = elements[i];
             unsigned int digit = GET_DIGIT(val, curr_digit*B, 0xF);
-            unsigned int old   = atomicAdd(ps + digit, 1);
+            // unsigned int old   = atomicAdd(ps + digit, 1);
+            unsigned int old = ps[digit];
+            ps[digit] += 1;
             d_out[old] = val;
         }
     }
@@ -272,10 +278,11 @@ int main(int argc, char* argv[]){
     printf("tile size:   %i\n", TILE_SIZE);
 
 
+    printf("Start\n");
     for (int i = 0; i < (sizeof(unsigned int)*8)/B; i++) {
         // kernel 1 + 2
         kernel12<<< num_blocks, NUM_THREADS >>>(d_in, d_out, N, d_histogram, i);
-        cudaDeviceSynchronize();
+        // cudaDeviceSynchronize();
     
 
         // Perform device wide scan over histogram (kernel 3)
@@ -288,12 +295,12 @@ int main(int argc, char* argv[]){
         // cub::DeviceScan::ExclusiveSum(d_tmp_storage, tmp_storage_bytes, d_histogram, d_histogram_scanned, HISTOGRAM_SIZE*num_blocks);
         cub::DeviceScan::ExclusiveScan(d_tmp_storage, tmp_storage_bytes, d_histogram, d_histogram_scanned, cub::Sum(), 0, HISTOGRAM_SIZE*num_blocks);
         cudaFree(d_tmp_storage); // TODO: Should we free this or does it happen automatically?
-        cudaDeviceSynchronize();
+        // cudaDeviceSynchronize();
 
         // kernel 4
         globalScatter<<< num_blocks, NUM_THREADS >>>(d_out, d_in, N, d_histogram_scanned, i);
         cudaMemset(d_histogram_scanned, 0, sizeof(unsigned int)*HISTOGRAM_SIZE*num_blocks);
-        cudaDeviceSynchronize();
+        // cudaDeviceSynchronize();
 
         // Swap input input and output. This is not needed when final kernel is implemented
         // unsigned int* tmp;
@@ -301,13 +308,15 @@ int main(int argc, char* argv[]){
         // d_in  = d_out;
         // d_out = tmp;
     }
+    cudaDeviceSynchronize();
+    printf("Stop\n");
 
 
     // Copy from device to print result
     cudaMemcpy(h_out, d_in, arr_size, cudaMemcpyDeviceToHost);
-    for (int i = 0; i < N; i++) {
-        printf("%10x      %10x\n", h_out[i], h_in[i]);
-    }
+    // for (int i = 0; i < N; i++) {
+    //     printf("%10x      %10x\n", h_out[i], h_in[i]);
+    // }
 
     // Clean up memory
     cudaFree(d_in);

@@ -49,7 +49,7 @@ __global__ void kernel12(unsigned int* d_out, unsigned int* d_in, uint64_t arr_s
     // Sort in shared memory with 1-bit split. b iterations
     __shared__ unsigned int c0;
     __shared__ unsigned int c1;
-    for (int i = 0; i < B; i++) {
+    for (int i = 0; i < 4; i++) {
 
         // Save in registers. Hopefully? Maybe?
         unsigned int element[4];
@@ -73,16 +73,12 @@ __global__ void kernel12(unsigned int* d_out, unsigned int* d_in, uint64_t arr_s
             // unsigned int s_index = idx + j * blockDim.x;
             if (s_index < arr_size) {
                 unsigned int val = element[j];
-                unsigned int bit = get_digit(val, i, 0x1);
+                unsigned int bit = get_digit(val, curr_digit*B + i, 0x1);
                 if (bit == 0)
                     atomicAdd(&c1, 1);
             }
         } 
         __syncthreads();
-
-        if (idx == 0) {
-            printf("c1 = %i\n", c1);
-        } __syncthreads();
 
         // Sort
         #pragma unroll
@@ -91,7 +87,7 @@ __global__ void kernel12(unsigned int* d_out, unsigned int* d_in, uint64_t arr_s
             // unsigned int s_index = idx + j * blockDim.x;
             if (s_index < arr_size) {
                 unsigned int val = element[j];
-                unsigned int bit = get_digit(val, i, 0x1);
+                unsigned int bit = get_digit(val, curr_digit*B + i, 0x1);
                 unsigned int* adr = bit == 0 ? &c0 : &c1; 
                 unsigned int old = atomicAdd(adr, 1);
                 s_tile[old] = val;
@@ -197,9 +193,9 @@ int main(int argc, char* argv[]){
         d_out = d_res;
 
         cudaMemcpy(h_out, d_res, arr_size, cudaMemcpyDeviceToHost);
-        // for (int i = 0; i < N; i++) {
-        //     printf("%10x      %10x\n", h_out[i], h_in[i]);
-        // }
+        for (int i = 0; i < N; i++) {
+            printf("%10x      %10x\n", h_out[i], h_in[i]);
+        }
     }
 
     printf("d_out: %x\n", d_out);
@@ -208,9 +204,9 @@ int main(int argc, char* argv[]){
 
     cudaMemcpy(h_out, d_res, arr_size, cudaMemcpyDeviceToHost);
 
-    for (int i = 0; i < N; i++) {
-        printf("%10x      %10x\n", h_out[i], h_in[i]);
-    }
+    // for (int i = 0; i < N; i++) {
+    //     printf("%10x      %10x\n", h_out[i], h_in[i]);
+    // }
 
 
 
