@@ -179,7 +179,7 @@ __global__ void globalScatter(unsigned int* d_in, unsigned int* d_out, unsigned 
     loadTile(d_in, input_arr_size, s_tile);
     __syncthreads();
     unsigned int elements[THREAD_ELEMENTS];
-    loadThreadElements(elements, input_arr_size, s_tile);
+    loadThreadElements(elements, local_tile_size, s_tile);
     __syncthreads();
     // Read the now scanned histogram back into shared such that we have faster
     // access to it and can update it faster. As the histogram were written to global
