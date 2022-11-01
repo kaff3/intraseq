@@ -2,7 +2,7 @@
 #define PMPH_RADIX
 
 #include<cuda_runtime.h>
-#include <cooperative_groups.h>
+#include<cooperative_groups.h>
 #include"cub/cub.cuh"
 
 #include<stdio.h>
@@ -266,9 +266,6 @@ public:
         unsigned int* d_histogram_scanned;
         cudaMalloc((void**)&d_histogram_scanned, HISTOGRAM_SIZE*num_blocks);
 
-        // unsigned int* h_histogram = (unsigned int*)malloc(HISTOGRAM_SIZE*num_blocks);
-        // unsigned int* h_histogram_scanned = (unsigned int*)malloc(HISTOGRAM_SIZE*num_blocks);
-
         // Print some debug informtion
         printf("num blcoks: %i\n", num_blocks);
         printf("tile size:  %i\n", TILE_ELEMENTS);
@@ -288,7 +285,11 @@ public:
                 <<<num_blocks, TS>>>(d_out, d_in, N, d_histogram_scanned, i, mask);
 
         }
-        cudaDeviceSynchronize();
+        // cudaDeviceSynchronize();
+        T* tmp;
+        tmp = d_in;
+        d_in = d_out;
+        d_out = tmp;
 
         cudaFree(d_histogram_scanned);
 

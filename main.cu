@@ -1,6 +1,7 @@
 
 // Include the three versions of radix we want to test
-#include "radix.cuh"
+#include "./radix.cuh"
+#include "./radix-cub.cuh"
 // #include "radix-fut.h"  // automagically generated
 
 // Standard includes
@@ -33,8 +34,10 @@ int main(int argc, char* argv[]) {
     // Instantiate. For easier calling of functions
     typedef Radix<unsigned int, 4, 4, 256> Radix4;
 
-    unsigned int* h_in  = (unsigned int*)malloc(arr_size);
-    unsigned int* h_out = (unsigned int*)malloc(arr_size);
+    unsigned int* h_in      = (unsigned int*)malloc(arr_size);
+    unsigned int* h_out_our = (unsigned int*)malloc(arr_size);
+    unsigned int* h_out_cub = (unsigned int*)malloc(arr_size);
+    unsigned int* h_out_fut = (unsigned int*)malloc(arr_size);
 
     randomInitNat<unsigned int>(h_in, N, N);
 
@@ -47,19 +50,36 @@ int main(int argc, char* argv[]) {
 
     // Copy initial array to device
     cudaMemcpy(d_in, h_in, arr_size, cudaMemcpyHostToDevice);
-
     Radix4::Sort(d_in, d_out, N, d_histogram, 0xF);
 
-    cudaMemcpy(h_out, d_in, arr_size, cudaMemcpyDeviceToHost);
+    cudaMemcpy(h_out_our, d_out, arr_size, cudaMemcpyDeviceToHost);
+
+    // Run the cub version
+    cudaMemcpy(d_in, h_in, arr_size, cudaMemcpyHostToDevice);
+    RadixSortCub<unsigned int>(d_in, d_out, N);
+    cudaMemcpy(h_out_cub, d_out, arr_size, cudaMemcpyDeviceToHost);
+
+    // validate
+    bool valid = true;
     for (int i = 0; i < N; i++) {
-        printf("%10x      %10x\n", h_out[i], h_in[i]);
+        if (h_out_our[i] != h_out_cub[i]) {
+            valid = false;
+            break;
+        }
+    }
+    if (valid) {
+        printf("VALID\n");
+    } else {
+        printf("INVALID\n");
     }
 
     cudaFree(d_in);
     cudaFree(d_out);
     cudaFree(d_histogram);
     free(h_in);
-    free(h_out);
+    free(h_out_our);
+    free(h_out_cub);
+    free(h_out_fut);
 
     return 0;
 }
