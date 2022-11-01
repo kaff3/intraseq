@@ -87,7 +87,7 @@ rankKernel(T* d_in, T* d_out, size_t N, unsigned int* d_histogram, int digit, in
         __syncthreads();
 
         // Scan
-        typedef cub::BlockScan<T, TS> BlockScan;
+        typedef cub::BlockScan<unsigned int, TS> BlockScan;
         __shared__ union {
             typename BlockScan::TempStorage ps0;
             typename BlockScan::TempStorage ps1;
@@ -126,7 +126,7 @@ rankKernel(T* d_in, T* d_out, size_t N, unsigned int* d_histogram, int digit, in
     for (int i = 0; i < E; i++) {
         size_t index = threadIdx.x * E + i;
         if (index < local_tile_size) {
-            unsigned int elmDigit = GET_DIGIT(elements[i], digit*B, mask);
+            T elmDigit = GET_DIGIT(elements[i], digit*B, mask);
             atomicAdd(s_histogram + elmDigit, 1);
         }
     }
@@ -185,13 +185,13 @@ globalScatterKernel(T* d_in, T* d_out, int N, unsigned int* d_histogram, int dig
     for (int i = 0; i < E; i++) {
         unsigned int index = threadIdx.x * E + i;
         if (index < local_tile_size){
-            unsigned int val = GET_DIGIT(elements[i], digit*B, mask);
+            T val = GET_DIGIT(elements[i], digit*B, mask);
             ps[val] += 1;
         }
     }
     __syncthreads();
 
-    typedef cub::BlockScan<T, TS> BlockScan;
+    typedef cub::BlockScan<unsigned int, TS> BlockScan;
     for (int i = 0; i < HISTOGRAM_ELEMENTS; i++) {
         __shared__ typename BlockScan::TempStorage tmp;
         unsigned int offset = s_histogram[i];
@@ -206,7 +206,7 @@ globalScatterKernel(T* d_in, T* d_out, int N, unsigned int* d_histogram, int dig
         unsigned int s_index = threadIdx.x * E + i;
         unsigned int d_index = blockIdx.x * TILE_ELEMENTS + s_index;
         if (d_index < N) {
-            unsigned int val = GET_DIGIT(elements[i], digit*B, mask);
+            T val = GET_DIGIT(elements[i], digit*B, mask);
             unsigned int old = ps[val];
             ps[val] += 1;
             d_out[old] = elements[i];
@@ -266,11 +266,6 @@ public:
         unsigned int* d_histogram_scanned;
         cudaMalloc((void**)&d_histogram_scanned, HISTOGRAM_SIZE*num_blocks);
 
-        // Print some debug informtion
-        printf("num blcoks: %i\n", num_blocks);
-        printf("tile size:  %i\n", TILE_ELEMENTS);
-
-
         int iterations = sizeof(T)*8 / B;
         for (int i = 0; i < iterations; i++) {
             // Kernel 1 + 2
@@ -286,10 +281,10 @@ public:
 
         }
         // cudaDeviceSynchronize();
-        T* tmp;
-        tmp = d_in;
-        d_in = d_out;
-        d_out = tmp;
+        // T* tmp;
+        // tmp = d_in;
+        // d_in = d_out;
+        // d_out = tmp;
 
         cudaFree(d_histogram_scanned);
 
