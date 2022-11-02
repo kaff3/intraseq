@@ -52,7 +52,7 @@ void bench(std::vector<int> sizes) {
         T* h_out_fut = (T*)malloc(arr_size);
 
         // Instantiate our radix sort algorithm with template with a typedef
-        typedef Radix<T, 4, 4, 256> Radix4;
+        typedef Radix<T, 4, 8, 256> Radix4;
 
         // Device allocations
         T* d_in;
