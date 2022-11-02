@@ -131,23 +131,23 @@ int main(int argc, char* argv[]) {
     // size_t arr_size = N * sizeof(unsigned int);
 
     std::vector<int> sizes;
-    sizes.push_back(333);       
-    sizes.push_back(1024);       
-    sizes.push_back(1000000);
-    sizes.push_back(10000000);
-    sizes.push_back(100000000);
+    // sizes.push_back(333);       
+    // sizes.push_back(1024);       
+    // sizes.push_back(1000000);
+    // sizes.push_back(10000000);
+     sizes.push_back(100000000);
     //sizes.push_back(1000000000);
 
-    printf("Unsigned int:\n");
+    printf("\nUnsigned int:\n");
     bench<unsigned int>(sizes);
 
-    printf("Unsigned long:\n");
+    printf("\nUnsigned long:\n");
     bench<unsigned long>(sizes);
 
-    printf("Unsigned short:\n");
+    printf("\nUnsigned short:\n");
     bench<unsigned short>(sizes);
     
-    printf("Unsigned char:\n");
+    printf("\nUnsigned char:\n");
     bench<unsigned char>(sizes);
 
 

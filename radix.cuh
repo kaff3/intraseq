@@ -8,6 +8,12 @@
 #include<stdio.h>
 #include<stdint.h>
 
+#include <sys/time.h>
+#include <time.h>
+#include <math.h>
+#include <stdlib.h>
+#include "./helper.cu.h"
+
 #define GET_DIGIT(V, I, M)  ((V >> I) & M)
 
 /******************************************************************************
@@ -136,6 +142,7 @@ rankKernel(T* d_in, T* d_out, size_t N, unsigned int* d_histogram, int digit, in
     // Write histogram to global memory transposed
     if (threadIdx.x < HISTOGRAM_ELEMENTS) {
         d_histogram[gridDim.x * threadIdx.x + blockIdx.x] = s_histogram[threadIdx.x];
+        //d_histogram[gridDim.x * HISTOGRAM_ELEMENTS + threadIdx.x] = s_histogram[threadIdx.x];
     }
 
 
@@ -269,16 +276,36 @@ public:
         int iterations = sizeof(T)*8 / B;
         for (int i = 0; i < iterations; i++) {
             // Kernel 1 + 2
+            double elapsed_1;
+            struct timeval t_start_1, t_end_1, t_diff_1;
+            gettimeofday(&t_start_1, NULL);
             rankKernel<T, B, E, TS, TILE_ELEMENTS, HISTOGRAM_ELEMENTS>
                 <<<num_blocks, TS>>>(d_in, d_out, N, d_histogram, i, mask);
-
+            gettimeofday(&t_end_1, NULL);
+            timeval_subtract(&t_diff_1, &t_end_1, &t_start_1);
+            elapsed_1 = (t_diff_1.tv_sec*1e6+t_diff_1.tv_usec);
+            printf("Kernel 1 in   %.2f\n",elapsed_1);
             // Kernel 3
+            double elapsed_3;
+            struct timeval t_start_3, t_end_3, t_diff_3;
+            gettimeofday(&t_start_3, NULL);
             globalRanking(N, d_histogram, d_histogram_scanned);
+            gettimeofday(&t_end_3, NULL);
+            timeval_subtract(&t_diff_3, &t_end_3, &t_start_3);
+            elapsed_3 = (t_diff_3.tv_sec*1e6+t_diff_3.tv_usec);
+            printf("Kernel 3 in   %.2f\n",elapsed_3);
 
             // Kernel 4
+            double elapsed_4;
+            struct timeval t_start_4, t_end_4, t_diff_4;
+            gettimeofday(&t_start_4, NULL);
             globalScatterKernel<T, B, E, TS, TILE_ELEMENTS, HISTOGRAM_ELEMENTS>
                 <<<num_blocks, TS>>>(d_out, d_in, N, d_histogram_scanned, i, mask);
 
+            gettimeofday(&t_end_4, NULL);
+            timeval_subtract(&t_diff_4, &t_end_4, &t_start_4);
+            elapsed_4 = (t_diff_4.tv_sec*1e6+t_diff_4.tv_usec);
+            printf("Kernel 4 in   %.2f\n",elapsed_4);
         }
         // cudaDeviceSynchronize();
         // T* tmp;
