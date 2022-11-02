@@ -136,6 +136,7 @@ int main(int argc, char* argv[]) {
     sizes.push_back(1000000);
     sizes.push_back(10000000);
     sizes.push_back(100000000);
+    //sizes.push_back(1000000000);
 
     printf("Unsigned int:\n");
     bench<unsigned int>(sizes);
