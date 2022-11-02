@@ -2,7 +2,7 @@
 // Include the three versions of radix we want to test
 #include "./radix.cuh"
 #include "./radix-cub.cuh"
-// #include "radix-fut.h"  // automagically generated
+#include "./radix-fut.cuh"
 #include "./helper.cu.h"
 // Standard includes
 #include<stdio.h>
@@ -66,6 +66,11 @@ void bench(std::vector<int> sizes) {
         cudaMalloc((void**)&d_histogram2, Radix4::HistogramStorageSize(N));
         cudaMalloc((void**)&d_tmp_storage, Radix4::TempStorageSize(N, d_histogram1));
 
+        // Dry runs
+        Radix4::Sort(d_in, d_out, N, d_histogram1, d_histogram2, d_tmp_storage, 0xF);
+        RadixSortCub<T>(d_in, d_out, N);
+        cudaDeviceSynchronize();
+
         // Initialize the array to be sorted and transfer to device
         randomInitNat<T>(h_in, N, N);
         cudaMemcpy(d_in, h_in, arr_size, cudaMemcpyHostToDevice);
@@ -76,6 +81,7 @@ void bench(std::vector<int> sizes) {
         gettimeofday(&t_start, NULL);
 
         Radix4::Sort(d_in, d_out, N, d_histogram1, d_histogram2, d_tmp_storage, 0xF);
+        cudaDeviceSynchronize();
 
         gettimeofday(&t_end, NULL);
         timeval_subtract(&t_diff, &t_end, &t_start);
@@ -92,6 +98,7 @@ void bench(std::vector<int> sizes) {
         gettimeofday(&t_start_cub, NULL);
 
         RadixSortCub<T>(d_in, d_out, N);
+        // cudaDeviceSynchronize();
 
         gettimeofday(&t_end_cub, NULL);
         timeval_subtract(&t_diff_cub, &t_end_cub, &t_start_cub);
@@ -99,6 +106,26 @@ void bench(std::vector<int> sizes) {
         printf("Cub:    %i in   %.2f\n", sizes[i],elapsed_cub);
 
         cudaMemcpy(h_out_cub, d_out, arr_size, cudaMemcpyDeviceToHost);
+
+        // for(int i = 0; i < N; i++) {
+        //     printf("\n");
+        // }
+
+        // Now futhark
+        cudaMemcpy(d_in, h_in, arr_size, cudaMemcpyHostToDevice);
+        double elapsed_fut;
+        struct timeval t_start_fut, t_end_fut, t_diff_fut;
+        gettimeofday(&t_start_fut, NULL);
+        RadixFut::Sort(d_in, d_out, N);
+        gettimeofday(&t_end_fut, NULL);
+        timeval_subtract(&t_diff_fut, &t_end_fut, &t_start_fut);
+        elapsed_fut = (t_diff_fut.tv_sec*1e6+t_diff_fut.tv_usec);
+        printf("Fut:    %i in   %.2f\n", sizes[i],elapsed_fut);
+
+        cudaMemcpy(h_out_fut, d_out, arr_size, cudaMemcpyDeviceToHost);
+
+
+
 
         // Validate if our implementation did it correct
         printf("Validation: ");
@@ -142,19 +169,24 @@ int main(int argc, char* argv[]) {
     // sizes.push_back(1000000);
     // sizes.push_back(10000000);
     // sizes.push_back(100000000);
+    
     sizes.push_back(100000000);
+    // sizes.push(100);
 
     printf("\nUnsigned int:\n");
     bench<unsigned int>(sizes);
 
-    printf("\nUnsigned long:\n");
-    bench<unsigned long>(sizes);
+    // printf("\nFuthark:\n");
+    // RadixFut::Sort()
 
-    printf("\nUnsigned short:\n");
-    bench<unsigned short>(sizes);
+    // printf("\nUnsigned long:\n");
+    // bench<unsigned long>(sizes);
+
+    // printf("\nUnsigned short:\n");
+    // bench<unsigned short>(sizes);
     
-    printf("\nUnsigned char:\n");
-    bench<unsigned char>(sizes);
+    // printf("\nUnsigned char:\n");
+    // bench<unsigned char>(sizes);
 
 
     return 0;
