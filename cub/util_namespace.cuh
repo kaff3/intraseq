@@ -37,10 +37,6 @@
 //#define CUB_NS_PREFIX namespace thrust{ namespace detail {
 //#define CUB_NS_POSTFIX } }
 
-#ifndef CUB_NS_QUALIFIER
-#define CUB_NS_QUALIFIER
-#endif
-
 #ifndef CUB_NS_PREFIX
 #define CUB_NS_PREFIX
 #endif
