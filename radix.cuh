@@ -261,28 +261,44 @@ public:
     Radix() {}
     ~Radix() {}
 
+    static size_t HistogramStorageSize(int N) {
+        int num_blocks = (N + TILE_ELEMENTS - 1) / TILE_ELEMENTS;
+        return num_blocks * HISTOGRAM_SIZE;
+    }
+
+    static size_t TempStorageSize(int N, unsigned int* d_histogram) {
+        int num_blocks = (N + TILE_ELEMENTS - 1) / TILE_ELEMENTS;
+        size_t size = 0;
+        cub::DeviceScan::ExclusiveScan(NULL, size, d_histogram, d_histogram, cub::Sum(), 0, HISTOGRAM_ELEMENTS*num_blocks);
+        return size;
+    } 
+
     // Main function of the class. Sorts the data
-    static void Sort(T* d_in, T* d_out, size_t N, unsigned int* d_histogram, int mask) {
+    static void Sort(T* d_in, T* d_out, size_t N, 
+        unsigned int* d_histogram1, unsigned int* d_histogram2,
+        void* d_tmp_storage, int mask) {
 
         int num_blocks = (N + TILE_ELEMENTS - 1) / TILE_ELEMENTS;
 
-        double elapsed_1;
-        struct timeval t_start_1, t_end_1, t_diff_1;
-        gettimeofday(&t_start_1, NULL);
+        // double elapsed_1;
+        // struct timeval t_start_1, t_end_1, t_diff_1;
+        // gettimeofday(&t_start_1, NULL);
 
-        unsigned int* d_histogram_scanned;
-        cudaMalloc((void**)&d_histogram_scanned, HISTOGRAM_SIZE*num_blocks);
+        // unsigned int* d_histogram_scanned;
+        // cudaMalloc((void**)&d_histogram_scanned, HISTOGRAM_SIZE*num_blocks);
 
         // Allocate tmp_storage for kernel 3
-        void* d_tmp_storage = NULL;
-        size_t tmp_storage_bytes = 0;
-        cub::DeviceScan::ExclusiveScan(d_tmp_storage, tmp_storage_bytes, d_histogram, d_histogram_scanned, cub::Sum(), 0, HISTOGRAM_ELEMENTS*num_blocks);
-        cudaMalloc(&d_tmp_storage, tmp_storage_bytes);
+        // void* d_tmp_storage = NULL;
+        // size_t tmp_storage_bytes = 0;
+        // cub::DeviceScan::ExclusiveScan(d_tmp_storage, tmp_storage_bytes, d_histogram, d_histogram_scanned, cub::Sum(), 0, HISTOGRAM_ELEMENTS*num_blocks);
+        // cudaMalloc(&d_tmp_storage, tmp_storage_bytes);
 
-        gettimeofday(&t_end_1, NULL);
-        timeval_subtract(&t_diff_1, &t_end_1, &t_start_1);
-        elapsed_1 = (t_diff_1.tv_sec*1e6+t_diff_1.tv_usec);
-        printf("Allocate in   %.2f\n",elapsed_1);
+        // gettimeofday(&t_end_1, NULL);
+        // timeval_subtract(&t_diff_1, &t_end_1, &t_start_1);
+        // elapsed_1 = (t_diff_1.tv_sec*1e6+t_diff_1.tv_usec);
+        // printf("Allocate in   %.2f\n",elapsed_1);
+
+        size_t tmp_storage_bytes = TempStorageSize(N, d_histogram1);
 
         int iterations = sizeof(T)*8 / B;
         for (int i = 0; i < iterations; i++) {
@@ -291,29 +307,31 @@ public:
             // struct timeval t_start_1, t_end_1, t_diff_1;
             // gettimeofday(&t_start_1, NULL);
             rankKernel<T, B, E, TS, TILE_ELEMENTS, HISTOGRAM_ELEMENTS>
-                <<<num_blocks, TS>>>(d_in, d_out, N, d_histogram, i, mask);
+                <<<num_blocks, TS>>>(d_in, d_out, N, d_histogram1, i, mask);
+            // cudaDeviceSynchronize();
             // gettimeofday(&t_end_1, NULL);
             // timeval_subtract(&t_diff_1, &t_end_1, &t_start_1);
             // elapsed_1 = (t_diff_1.tv_sec*1e6+t_diff_1.tv_usec);
             // printf("Kernel 1 in   %.2f\n",elapsed_1);
 
             // Kernel 3
-            double elapsed_3;
-            struct timeval t_start_3, t_end_3, t_diff_3;
-            gettimeofday(&t_start_3, NULL);
-            cub::DeviceScan::ExclusiveScan(d_tmp_storage, tmp_storage_bytes, d_histogram, d_histogram_scanned, cub::Sum(), 0, HISTOGRAM_ELEMENTS*num_blocks);
-            gettimeofday(&t_end_3, NULL);
-            timeval_subtract(&t_diff_3, &t_end_3, &t_start_3);
-            elapsed_3 = (t_diff_3.tv_sec*1e6+t_diff_3.tv_usec);
-            printf("Kernel 3 in   %.2f\n",elapsed_3);
+            // double elapsed_3;
+            // struct timeval t_start_3, t_end_3, t_diff_3;
+            // gettimeofday(&t_start_3, NULL);
+            cub::DeviceScan::ExclusiveScan(d_tmp_storage, tmp_storage_bytes, d_histogram1, d_histogram2, cub::Sum(), 0, (int)HISTOGRAM_ELEMENTS*num_blocks);
+            // cudaDeviceSynchronize();
+            // gettimeofday(&t_end_3, NULL);
+            // timeval_subtract(&t_diff_3, &t_end_3, &t_start_3);
+            // elapsed_3 = (t_diff_3.tv_sec*1e6+t_diff_3.tv_usec);
+            // printf("Kernel 3 in   %.2f\n",elapsed_3);
 
             // Kernel 4
             // double elapsed_4;
             // struct timeval t_start_4, t_end_4, t_diff_4;
             // gettimeofday(&t_start_4, NULL);
             globalScatterKernel<T, B, E, TS, TILE_ELEMENTS, HISTOGRAM_ELEMENTS>
-                <<<num_blocks, TS>>>(d_out, d_in, N, d_histogram_scanned, i, mask);
-
+                <<<num_blocks, TS>>>(d_out, d_in, N, d_histogram2, i, mask);
+            // cudaDeviceSynchronize();
             // gettimeofday(&t_end_4, NULL);
             // timeval_subtract(&t_diff_4, &t_end_4, &t_start_4);
             // elapsed_4 = (t_diff_4.tv_sec*1e6+t_diff_4.tv_usec);
@@ -325,15 +343,9 @@ public:
         // d_in = d_out;
         // d_out = tmp;
 
-        cudaFree(d_histogram_scanned);
-        cudaFree(d_tmp_storage);
+        // cudaFree(d_histogram_scanned);
+        // cudaFree(d_tmp_storage);
     }
-
-    static size_t d_histogramSize(int N) {
-        int num_blocks = (N + TILE_ELEMENTS - 1) / TILE_ELEMENTS;
-        return num_blocks * HISTOGRAM_SIZE;
-    }
-
 }; // Radix end
 
 

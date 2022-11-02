@@ -52,15 +52,19 @@ void bench(std::vector<int> sizes) {
         T* h_out_fut = (T*)malloc(arr_size);
 
         // Instantiate our radix sort algorithm with template with a typedef
-        typedef Radix<T, 4, 8, 256> Radix4;
+        typedef Radix<T, 4, 4, 256> Radix4;
 
         // Device allocations
         T* d_in;
         T* d_out;
-        unsigned int* d_histogram;
+        unsigned int* d_histogram1;
+        unsigned int* d_histogram2;
+        void*         d_tmp_storage;
         cudaMalloc((void**)&d_in,  arr_size);
         cudaMalloc((void**)&d_out, arr_size);
-        cudaMalloc((void**)&d_histogram, Radix4::d_histogramSize(N));
+        cudaMalloc((void**)&d_histogram1, Radix4::HistogramStorageSize(N));
+        cudaMalloc((void**)&d_histogram2, Radix4::HistogramStorageSize(N));
+        cudaMalloc((void**)&d_tmp_storage, Radix4::TempStorageSize(N, d_histogram1));
 
         // Initialize the array to be sorted and transfer to device
         randomInitNat<T>(h_in, N, N);
@@ -71,7 +75,7 @@ void bench(std::vector<int> sizes) {
         struct timeval t_start, t_end, t_diff;
         gettimeofday(&t_start, NULL);
 
-        Radix4::Sort(d_in, d_out, N, d_histogram, 0xF);
+        Radix4::Sort(d_in, d_out, N, d_histogram1, d_histogram2, d_tmp_storage, 0xF);
 
         gettimeofday(&t_end, NULL);
         timeval_subtract(&t_diff, &t_end, &t_start);
@@ -111,7 +115,9 @@ void bench(std::vector<int> sizes) {
         // Have to allocate and free eeach iteration as the sizes change
         cudaFree(d_in);
         cudaFree(d_out);
-        cudaFree(d_histogram);
+        cudaFree(d_histogram1);
+        cudaFree(d_histogram2);
+        cudaFree(d_tmp_storage);
         free(h_in);
         free(h_out_our);
         free(h_out_cub);
@@ -135,8 +141,8 @@ int main(int argc, char* argv[]) {
     // sizes.push_back(1024);       
     // sizes.push_back(1000000);
     // sizes.push_back(10000000);
-     sizes.push_back(100000000);
-    //sizes.push_back(1000000000);
+    // sizes.push_back(100000000);
+    sizes.push_back(100000000);
 
     printf("\nUnsigned int:\n");
     bench<unsigned int>(sizes);
