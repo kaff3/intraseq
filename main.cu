@@ -2,7 +2,6 @@
 // Include the three versions of radix we want to test
 #include "./radix.cuh"
 #include "./radix-cub.cuh"
-#include "./radix-fut.cuh"
 #include "./helper.cu.h"
 // Standard includes
 #include<stdio.h>
