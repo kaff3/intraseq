@@ -18,13 +18,13 @@
 #include"cub/cub.cuh"
 #include<cuda_runtime.h>
 
-template<typename T>
-void randomInitNat(T* data, const size_t size, const size_t H) {
-    for (size_t i = 0; i < size; i++) {
-        T r = rand();
-        data[i] = r % H;
-    }
-}
+// template<typename T>
+// void randomInitNat(T* data, const size_t size, const size_t H) {
+//     for (size_t i = 0; i < size; i++) {
+//         T r = rand();
+//         data[i] = r % H;
+//     }
+// }
 
 template<typename T>
 bool validate(T* h1, T* h2, int N) {
@@ -69,10 +69,12 @@ void bench(std::vector<int> sizes) {
         // Dry runs
         Radix4::Sort(d_in, d_out, N, d_histogram1, d_histogram2, d_tmp_storage, 0xF);
         RadixSortCub<T>(d_in, d_out, N);
+        
         cudaDeviceSynchronize();
 
         // Initialize the array to be sorted and transfer to device
         randomInitNat<T>(h_in, N, N);
+        
         cudaMemcpy(d_in, h_in, arr_size, cudaMemcpyHostToDevice);
 
         // Run our version and save the result
@@ -112,17 +114,17 @@ void bench(std::vector<int> sizes) {
         // }
 
         // Now futhark
-        cudaMemcpy(d_in, h_in, arr_size, cudaMemcpyHostToDevice);
-        double elapsed_fut;
-        struct timeval t_start_fut, t_end_fut, t_diff_fut;
-        gettimeofday(&t_start_fut, NULL);
-        RadixFut::Sort(d_in, d_out, N);
-        gettimeofday(&t_end_fut, NULL);
-        timeval_subtract(&t_diff_fut, &t_end_fut, &t_start_fut);
-        elapsed_fut = (t_diff_fut.tv_sec*1e6+t_diff_fut.tv_usec);
-        printf("Fut:    %i in   %.2f\n", sizes[i],elapsed_fut);
+        // cudaMemcpy(d_in, h_in, arr_size, cudaMemcpyHostToDevice);
+        // double elapsed_fut;
+        // struct timeval t_start_fut, t_end_fut, t_diff_fut;
+        // gettimeofday(&t_start_fut, NULL);
+        // RadixFut::Sort(d_in, d_out, N);
+        // gettimeofday(&t_end_fut, NULL);
+        // timeval_subtract(&t_diff_fut, &t_end_fut, &t_start_fut);
+        // elapsed_fut = (t_diff_fut.tv_sec*1e6+t_diff_fut.tv_usec);
+        // printf("Fut:    %i in   %.2f\n", sizes[i],elapsed_fut);
 
-        cudaMemcpy(h_out_fut, d_out, arr_size, cudaMemcpyDeviceToHost);
+        // cudaMemcpy(h_out_fut, d_out, arr_size, cudaMemcpyDeviceToHost);
 
 
 

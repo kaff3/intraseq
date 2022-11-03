@@ -30,7 +30,6 @@ vi finder så de lokale positioner, hvis count != 1 (kan enten læses fra b_ his
 	scan val	0 0 0 
 			  =
 	b1 local:   0 1 2 0 0 0
-	b1 hist: 3 1 1 1 
 
 	
 	b2: 		1 2 2 2 3 3

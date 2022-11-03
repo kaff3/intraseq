@@ -189,46 +189,34 @@ globalScatterKernel(T* d_in, T* d_out, int N, unsigned int* d_histogram, unsigne
     __syncthreads();
 
     // need scanned local memory to compute local offset
-    typedef cub::BlockScan<unsigned int, TS> BlockScan;
+    typedef cub::BlockScan<unsigned int, HISTOGRAM_ELEMENTS> BlockScan;
     __shared__ union {
         typename BlockScan::TempStorage ps0;
     } ps_storage;
 
     if (tid < HISTOGRAM_ELEMENTS){
-        BlockScan(ps_storage.ps0).ExclusiveScan(s_histogram[tid], &s_histogram_local_scan[tid], 0, cub::Sum());
+        unsigned int ele = 0;
+        BlockScan(ps_storage.ps0).ExclusiveScan(s_histogram[tid], ele, 0, cub::Sum());
+        s_histogram_local_scan[tid] = ele;
     }
     __syncthreads();
 
+    #pragma unroll
     for (int i = 0; i < E; i++){
         int loc_idx = tid + (i * TS);
-        int index = blockId.x * TILE_ELEMENTS + loc_idx;
+        int index = blockIdx.x * TILE_ELEMENTS + loc_idx;
 
         if (index < local_tile_size){
-            // Det har vi vel ikke brug for?
             T val = GET_DIGIT(d_in[index], digit*B, mask);
-            int local_pos;
-            int global_pos;
-            // find global og local
-            global_pos = s_histogram_global_scan[val];
-            if (s_histogram[val] != 1)
-            {
-                local_pos = loc_idx - s_histogram_local_scan[val];
-            }
-            else
-            {
-                local_pos = 0;
-            }
             
-            
+            // global_pos: position in global array where this block should place its values with the found digits
+            // local_pos:  position relative to other values with same digit in this block
+            int global_pos = s_histogram_global_scan[val];
+            int local_pos = s_histogram[val] == 1 ? 0 : loc_idx - s_histogram_local_scan[val];  
+            int pos = global_pos + local_pos;
 
-
-            int pos = global + local;
-
-
-            //after pos
-            d_out[pos] = d_in[index];
-            
-
+            // scatter
+            d_out[pos] = d_in[index];            
         }
     }
 }
@@ -406,12 +394,14 @@ public:
             // gettimeofday(&t_start_4, NULL);
             globalScatterKernel<T, B, E, TS, TILE_ELEMENTS, HISTOGRAM_ELEMENTS>
                 <<<num_blocks, TS>>>(d_out, d_in, N, d_histogram, d_histogram_scan, i, mask);
+            
             // cudaDeviceSynchronize();
             // gettimeofday(&t_end_4, NULL);
             // timeval_subtract(&t_diff_4, &t_end_4, &t_start_4);
             // elapsed_4 = (t_diff_4.tv_sec*1e6+t_diff_4.tv_usec);
             // printf("Kernel 4 in   %.2f\n",elapsed_4);
         }
+
         // cudaDeviceSynchronize();
         // T* tmp;
         // tmp = d_in;
