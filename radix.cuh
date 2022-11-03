@@ -192,7 +192,7 @@ globalScatterKernel(T* d_in, T* d_out, int N, unsigned int* d_histogram, unsigne
     // need scanned local histogram to compute local offset
     typedef cub::BlockScan<unsigned int, TS> BlockScan;
     __shared__ typename BlockScan::TempStorage count;
-    unsigned int in = s_histogram[tid % 256];
+    unsigned int in = s_histogram[tid % HISTOGRAM_ELEMENTS];
     unsigned int out = 0;
     BlockScan(count).ExclusiveScan(in, out, 0, cub::Sum());
     if (tid < HISTOGRAM_ELEMENTS) {
