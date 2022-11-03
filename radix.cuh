@@ -166,61 +166,112 @@ template <
     int TILE_ELEMENTS,
     int HISTOGRAM_ELEMENTS >
 __global__ void 
-globalScatterKernel(T* d_in, T* d_out, int N, unsigned int* d_histogram, int digit, int mask) {
-
+globalScatterKernel(T* d_in, T* d_out, int N, unsigned int* d_histogram, unsigned int* d_histogram_scan, 
+                    int digit, int mask) {
+    int tid = threadIdx.x;
     int tile_id = blockIdx.x;
     int last_tile = ((N + TILE_ELEMENTS - 1) / TILE_ELEMENTS) - 1;
     int last_size = N % TILE_ELEMENTS == 0 ? TILE_ELEMENTS : N % TILE_ELEMENTS;
     int local_tile_size = tile_id == last_tile ? last_size : TILE_ELEMENTS;
 
-    __shared__ T s_tile[TILE_ELEMENTS];
-    loadTile<T, E, TILE_ELEMENTS>(s_tile, d_in, N);
-    __syncthreads();
-
-    T elements[E];
-    loadThreadElements<T, E>(elements, s_tile, local_tile_size);
-    __syncthreads();
-
+    // load histograms into shared memory
     __shared__ unsigned int s_histogram[HISTOGRAM_ELEMENTS];
-    if (threadIdx.x < HISTOGRAM_ELEMENTS) {
-        s_histogram[threadIdx.x] = d_histogram[gridDim.x * threadIdx.x + blockIdx.x];
+    __shared__ unsigned int s_histogram_global_scan[HISTOGRAM_ELEMENTS];
+    __shared__ unsigned int s_histogram_local_scan[HISTOGRAM_ELEMENTS];
+    if (tid < HISTOGRAM_ELEMENTS) {
+        s_histogram[tid] = d_histogram[gridDim.x * tid + blockIdx.x];
     }
     __syncthreads();
 
-    unsigned int ps[HISTOGRAM_ELEMENTS] = {0};
-    #pragma unroll
-    for (int i = 0; i < E; i++) {
-        unsigned int index = threadIdx.x * E + i;
-        if (index < local_tile_size){
-            T val = GET_DIGIT(elements[i], digit*B, mask);
-            ps[val] += 1;
-        }
+    if (tid < HISTOGRAM_ELEMENTS) {
+        s_histogram_global_scan[tid] = d_histogram_scan[gridDim.x * tid + blockIdx.x];
     }
     __syncthreads();
 
+    // need scanned local memory to compute local offset
     typedef cub::BlockScan<unsigned int, TS> BlockScan;
-    for (int i = 0; i < HISTOGRAM_ELEMENTS; i++) {
-        __shared__ typename BlockScan::TempStorage tmp;
-        unsigned int offset = s_histogram[i];
-        BlockScan(tmp).ExclusiveScan(ps[i], ps[i], offset, cub::Sum());
-        __syncthreads();
-    } 
+    __shared__ union {
+        typename BlockScan::TempStorage ps0;
+    } ps_storage;
+
+    if (tid < HISTOGRAM_ELEMENTS){
+        BlockScan(ps_storage.ps0).ExclusiveScan(s_histogram[tid], &s_histogram_local_scan[tid], 0, cub::Sum());
+    }
     __syncthreads();
 
-    // Scatter to global memory
-    #pragma unroll
-    for (int i = 0; i < E; i++) {
-        unsigned int s_index = threadIdx.x * E + i;
-        unsigned int d_index = blockIdx.x * TILE_ELEMENTS + s_index;
-        if (d_index < N) {
-            T val = GET_DIGIT(elements[i], digit*B, mask);
-            unsigned int old = ps[val];
-            ps[val] += 1;
-            d_out[old] = elements[i];
+    for (int i = 0; i < E; i++){
+        int index = blockId.x * TILE_ELEMENTS + tid + (i * TS);
+        if (index < local_tile_size){
+            T val = GET_DIGIT(d_in[index], digit*B, mask);
+            
+
         }
     }
+}
 
-} // End globalScatterKernel
+// template <
+//     typename T,     // The type of the data to be sorted
+//     int B,          // The amount of bits that make up a digit
+//     int E,          // The number of elements pr. thread
+//     int TS,         // The number of threads pr. block
+//     int TILE_ELEMENTS,
+//     int HISTOGRAM_ELEMENTS >
+// __global__ void 
+// globalScatterKernel(T* d_in, T* d_out, int N, unsigned int* d_histogram, int digit, int mask) {
+
+//     int tile_id = blockIdx.x;
+//     int last_tile = ((N + TILE_ELEMENTS - 1) / TILE_ELEMENTS) - 1;
+//     int last_size = N % TILE_ELEMENTS == 0 ? TILE_ELEMENTS : N % TILE_ELEMENTS;
+//     int local_tile_size = tile_id == last_tile ? last_size : TILE_ELEMENTS;
+
+//     __shared__ T s_tile[TILE_ELEMENTS];
+//     loadTile<T, E, TILE_ELEMENTS>(s_tile, d_in, N);
+//     __syncthreads();
+
+//     T elements[E];
+//     loadThreadElements<T, E>(elements, s_tile, local_tile_size);
+//     __syncthreads();
+
+//     __shared__ unsigned int s_histogram[HISTOGRAM_ELEMENTS];
+//     if (threadIdx.x < HISTOGRAM_ELEMENTS) {
+//         s_histogram[threadIdx.x] = d_histogram[gridDim.x * threadIdx.x + blockIdx.x];
+//     }
+//     __syncthreads();
+
+//     unsigned int ps[HISTOGRAM_ELEMENTS] = {0};
+//     #pragma unroll
+//     for (int i = 0; i < E; i++) {
+//         unsigned int index = threadIdx.x * E + i;
+//         if (index < local_tile_size){
+//             T val = GET_DIGIT(elements[i], digit*B, mask);
+//             ps[val] += 1;
+//         }
+//     }
+//     __syncthreads();
+
+//     typedef cub::BlockScan<unsigned int, TS> BlockScan;
+//     for (int i = 0; i < HISTOGRAM_ELEMENTS; i++) {
+//         __shared__ typename BlockScan::TempStorage tmp;
+//         unsigned int offset = s_histogram[i];
+//         BlockScan(tmp).ExclusiveScan(ps[i], ps[i], offset, cub::Sum());
+//         __syncthreads();
+//     } 
+//     __syncthreads();
+
+//     // Scatter to global memory
+//     #pragma unroll
+//     for (int i = 0; i < E; i++) {
+//         unsigned int s_index = threadIdx.x * E + i;
+//         unsigned int d_index = blockIdx.x * TILE_ELEMENTS + s_index;
+//         if (d_index < N) {
+//             T val = GET_DIGIT(elements[i], digit*B, mask);
+//             unsigned int old = ps[val];
+//             ps[val] += 1;
+//             d_out[old] = elements[i];
+//         }
+//     }
+
+// } // End globalScatterKernel
 
 
 
@@ -275,7 +326,7 @@ public:
 
     // Main function of the class. Sorts the data
     static void Sort(T* d_in, T* d_out, size_t N, 
-        unsigned int* d_histogram1, unsigned int* d_histogram2,
+        unsigned int* d_histogram, unsigned int* d_histogram_scan,
         void* d_tmp_storage, int mask) {
 
         int num_blocks = (N + TILE_ELEMENTS - 1) / TILE_ELEMENTS;
@@ -298,7 +349,7 @@ public:
         // elapsed_1 = (t_diff_1.tv_sec*1e6+t_diff_1.tv_usec);
         // printf("Allocate in   %.2f\n",elapsed_1);
 
-        size_t tmp_storage_bytes = TempStorageSize(N, d_histogram1);
+        size_t tmp_storage_bytes = TempStorageSize(N, d_histogram);
 
         int iterations = sizeof(T)*8 / B;
         for (int i = 0; i < iterations; i++) {
@@ -307,7 +358,7 @@ public:
             // struct timeval t_start_1, t_end_1, t_diff_1;
             // gettimeofday(&t_start_1, NULL);
             rankKernel<T, B, E, TS, TILE_ELEMENTS, HISTOGRAM_ELEMENTS>
-                <<<num_blocks, TS>>>(d_in, d_out, N, d_histogram1, i, mask);
+                <<<num_blocks, TS>>>(d_in, d_out, N, d_histogram, i, mask);
             // cudaDeviceSynchronize();
             // gettimeofday(&t_end_1, NULL);
             // timeval_subtract(&t_diff_1, &t_end_1, &t_start_1);
@@ -318,7 +369,7 @@ public:
             // double elapsed_3;
             // struct timeval t_start_3, t_end_3, t_diff_3;
             // gettimeofday(&t_start_3, NULL);
-            cub::DeviceScan::ExclusiveScan(d_tmp_storage, tmp_storage_bytes, d_histogram1, d_histogram2, cub::Sum(), 0, (int)HISTOGRAM_ELEMENTS*num_blocks);
+            cub::DeviceScan::ExclusiveScan(d_tmp_storage, tmp_storage_bytes, d_histogram, d_histogram_scan, cub::Sum(), 0, (int)HISTOGRAM_ELEMENTS*num_blocks);
             // cudaDeviceSynchronize();
             // gettimeofday(&t_end_3, NULL);
             // timeval_subtract(&t_diff_3, &t_end_3, &t_start_3);
@@ -330,7 +381,7 @@ public:
             // struct timeval t_start_4, t_end_4, t_diff_4;
             // gettimeofday(&t_start_4, NULL);
             globalScatterKernel<T, B, E, TS, TILE_ELEMENTS, HISTOGRAM_ELEMENTS>
-                <<<num_blocks, TS>>>(d_out, d_in, N, d_histogram2, i, mask);
+                <<<num_blocks, TS>>>(d_out, d_in, N, d_histogram, d_histogram_scan, i, mask);
             // cudaDeviceSynchronize();
             // gettimeofday(&t_end_4, NULL);
             // timeval_subtract(&t_diff_4, &t_end_4, &t_start_4);
@@ -343,7 +394,7 @@ public:
         // d_in = d_out;
         // d_out = tmp;
 
-        // cudaFree(d_histogram_scanned);
+        // cudaFree(hned);
         // cudaFree(d_tmp_storage);
     }
 }; // Radix end
