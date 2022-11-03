@@ -200,9 +200,33 @@ globalScatterKernel(T* d_in, T* d_out, int N, unsigned int* d_histogram, unsigne
     __syncthreads();
 
     for (int i = 0; i < E; i++){
-        int index = blockId.x * TILE_ELEMENTS + tid + (i * TS);
+        int loc_idx = tid + (i * TS);
+        int index = blockId.x * TILE_ELEMENTS + loc_idx;
+
         if (index < local_tile_size){
+            // Det har vi vel ikke brug for?
             T val = GET_DIGIT(d_in[index], digit*B, mask);
+            int local_pos;
+            int global_pos;
+            // find global og local
+            global_pos = s_histogram_global_scan[val];
+            if (s_histogram[val] != 1)
+            {
+                local_pos = loc_idx - s_histogram_local_scan[val];
+            }
+            else
+            {
+                local_pos = 0;
+            }
+            
+            
+
+
+            int pos = global + local;
+
+
+            //after pos
+            d_out[pos] = d_in[index];
             
 
         }
