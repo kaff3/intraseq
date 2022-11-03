@@ -189,102 +189,51 @@ globalScatterKernel(T* d_in, T* d_out, int N, unsigned int* d_histogram, unsigne
     }
     __syncthreads();
 
-    if (tid < HISTOGRAM_ELEMENTS){
-        // need scanned local histogram to compute local offset
-        typedef cub::BlockScan<unsigned int, HISTOGRAM_ELEMENTS> BlockScan;
-        __shared__ typename BlockScan::TempStorage count;
-        unsigned int in = s_histogram[tid];
-        unsigned int out = 0;
-        BlockScan(count).ExclusiveScan(in, out, 0, cub::Sum());
+    // need scanned local histogram to compute local offset
+    typedef cub::BlockScan<unsigned int, TS> BlockScan;
+    __shared__ typename BlockScan::TempStorage count;
+    unsigned int in = s_histogram[tid % 256];
+    unsigned int out = 0;
+    BlockScan(count).ExclusiveScan(in, out, 0, cub::Sum());
+    if (tid < HISTOGRAM_ELEMENTS) {
         s_histogram_local_scan[tid] = out;
     }
+    // if (tid == 0) {
+    //     unsigned int acc = 0;
+    //     s_histogram_local_scan[0] = 0;
+    //     for (int i = 1; i < HISTOGRAM_ELEMENTS; i++) {
+    //         s_histogram_local_scan[i] = acc + s_histogram[i-1];
+    //         acc += s_histogram[i-1];
+    //     }
+    // }
     __syncthreads();
 
     #pragma unroll
     for (int i = 0; i < E; i++){
-        int loc_idx = tid + (i * TS);
-        int index = blockIdx.x * TILE_ELEMENTS + loc_idx;
+        unsigned int loc_idx = tid + (i * TS);
+        unsigned int index = blockIdx.x * TILE_ELEMENTS + loc_idx;
 
-        if (loc_idx < local_tile_size){
-            int full_val = d_in[index];
+        
+
+        if (index < N){
+            T full_val = d_in[index];
             T val = GET_DIGIT(full_val, digit*B, mask);
             
             // global_pos: position in global array where this block should place its values with the found digits
             // local_pos:  position relative to other values with same digit in this block
-            int global_pos = s_histogram_global_scan[val];
-            int local_pos = s_histogram[val] == 1 ? 0 : loc_idx - s_histogram_local_scan[val];  
-            int pos = global_pos + local_pos;
+            unsigned int global_pos = s_histogram_global_scan[val];
+            unsigned int local_pos = (s_histogram[val] == 1) ? 0 : loc_idx - s_histogram_local_scan[val];  
+            unsigned int pos = global_pos + local_pos;
+
+            if (pos > N) {
+                printf("OOB pos: %u, %u, %u\n", pos, loc_idx, s_histogram_local_scan[val]);
+            }
 
             // scatter
             d_out[pos] = full_val;            
         }
     }
 }
-
-// template <
-//     typename T,     // The type of the data to be sorted
-//     int B,          // The amount of bits that make up a digit
-//     int E,          // The number of elements pr. thread
-//     int TS,         // The number of threads pr. block
-//     int TILE_ELEMENTS,
-//     int HISTOGRAM_ELEMENTS >
-// __global__ void 
-// globalScatterKernel(T* d_in, T* d_out, int N, unsigned int* d_histogram, int digit, int mask) {
-
-//     int tile_id = blockIdx.x;
-//     int last_tile = ((N + TILE_ELEMENTS - 1) / TILE_ELEMENTS) - 1;
-//     int last_size = N % TILE_ELEMENTS == 0 ? TILE_ELEMENTS : N % TILE_ELEMENTS;
-//     int local_tile_size = tile_id == last_tile ? last_size : TILE_ELEMENTS;
-
-//     __shared__ T s_tile[TILE_ELEMENTS];
-//     loadTile<T, E, TILE_ELEMENTS>(s_tile, d_in, N);
-//     __syncthreads();
-
-//     T elements[E];
-//     loadThreadElements<T, E>(elements, s_tile, local_tile_size);
-//     __syncthreads();
-
-//     __shared__ unsigned int s_histogram[HISTOGRAM_ELEMENTS];
-//     if (threadIdx.x < HISTOGRAM_ELEMENTS) {
-//         s_histogram[threadIdx.x] = d_histogram[gridDim.x * threadIdx.x + blockIdx.x];
-//     }
-//     __syncthreads();
-
-//     unsigned int ps[HISTOGRAM_ELEMENTS] = {0};
-//     #pragma unroll
-//     for (int i = 0; i < E; i++) {
-//         unsigned int index = threadIdx.x * E + i;
-//         if (index < local_tile_size){
-//             T val = GET_DIGIT(elements[i], digit*B, mask);
-//             ps[val] += 1;
-//         }
-//     }
-//     __syncthreads();
-
-//     typedef cub::BlockScan<unsigned int, TS> BlockScan;
-//     for (int i = 0; i < HISTOGRAM_ELEMENTS; i++) {
-//         __shared__ typename BlockScan::TempStorage tmp;
-//         unsigned int offset = s_histogram[i];
-//         BlockScan(tmp).ExclusiveScan(ps[i], ps[i], offset, cub::Sum());
-//         __syncthreads();
-//     } 
-//     __syncthreads();
-
-//     // Scatter to global memory
-//     #pragma unroll
-//     for (int i = 0; i < E; i++) {
-//         unsigned int s_index = threadIdx.x * E + i;
-//         unsigned int d_index = blockIdx.x * TILE_ELEMENTS + s_index;
-//         if (d_index < N) {
-//             T val = GET_DIGIT(elements[i], digit*B, mask);
-//             unsigned int old = ps[val];
-//             ps[val] += 1;
-//             d_out[old] = elements[i];
-//         }
-//     }
-
-// } // End globalScatterKernel
-
 
 
 

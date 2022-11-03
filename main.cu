@@ -184,13 +184,13 @@ int main(int argc, char* argv[]) {
     // sizes.push_back(1024);       
     // sizes.push_back(1000000);
     // sizes.push_back(10000000);
-    // sizes.push_back(100000000);
+    sizes.push_back(100000000);
     
-    sizes.push_back(4 * 1024);
+    // sizes.push_back(4 * 1024);
     // sizes.push(100);
 
     printf("\nUnsigned int:\n");
-    bench<unsigned int, 8, 8, 256>(sizes);
+    bench<unsigned int, 8, 8, 512>(sizes);
 
     // printf("\nFuthark:\n");
     // RadixFut::Sort()
