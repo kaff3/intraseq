@@ -73,7 +73,7 @@ rankKernel(T* d_in, T* d_out, size_t N, unsigned int* d_histogram, int digit, in
 
     T elements[E];
 
-    // B itersions of 1 bit splits sorting locally in s_tile
+    // B iterations of 1 bit splits sorting locally in s_tile
     for (int i = 0; i < B; i++) {
         loadThreadElements<T, E>(elements, s_tile, local_tile_size);
 
@@ -206,7 +206,8 @@ globalScatterKernel(T* d_in, T* d_out, int N, unsigned int* d_histogram, unsigne
         int index = blockIdx.x * TILE_ELEMENTS + loc_idx;
 
         if (loc_idx < local_tile_size){
-            T val = GET_DIGIT(d_in[index], digit*B, mask);
+            int full_val = d_in[index];
+            T val = GET_DIGIT(full_val, digit*B, mask);
             
             // global_pos: position in global array where this block should place its values with the found digits
             // local_pos:  position relative to other values with same digit in this block
@@ -215,7 +216,7 @@ globalScatterKernel(T* d_in, T* d_out, int N, unsigned int* d_histogram, unsigne
             int pos = global_pos + local_pos;
 
             // scatter
-            d_out[pos] = d_in[index];            
+            d_out[pos] = full_val;            
         }
     }
 }

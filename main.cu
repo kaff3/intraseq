@@ -26,6 +26,16 @@
 //     }
 // }
 
+int GetMask(int b){
+    int res = 0;
+    for (int i = 0; i < b; i++) {
+        res = res << 1;
+        res = res | 1;
+    }
+    
+    return res;
+}
+
 template<typename T>
 bool validate(T* h1, T* h2, int N) {
     bool valid = true;
@@ -38,7 +48,11 @@ bool validate(T* h1, T* h2, int N) {
     return valid;
 }
 
-template<typename T>
+template<
+    typename T, 
+    int B, 
+    int E,
+    int TS >
 void bench(std::vector<int> sizes) {
     
     for (int i = 0; i < sizes.size(); i++) {
@@ -52,7 +66,8 @@ void bench(std::vector<int> sizes) {
         T* h_out_fut = (T*)malloc(arr_size);
 
         // Instantiate our radix sort algorithm with template with a typedef
-        typedef Radix<T, 4, 4, 256> Radix4;
+        typedef Radix<T, B, E, TS> Radix4;
+        int mask = GetMask(B);
 
         // Device allocations
         T* d_in;
@@ -67,7 +82,7 @@ void bench(std::vector<int> sizes) {
         cudaMalloc((void**)&d_tmp_storage, Radix4::TempStorageSize(N, d_histogram1));
 
         // Dry runs
-        Radix4::Sort(d_in, d_out, N, d_histogram1, d_histogram2, d_tmp_storage, 0xF);
+        Radix4::Sort(d_in, d_out, N, d_histogram1, d_histogram2, d_tmp_storage, mask);
         RadixSortCub<T>(d_in, d_out, N);
         
         cudaDeviceSynchronize();
@@ -82,7 +97,7 @@ void bench(std::vector<int> sizes) {
         struct timeval t_start, t_end, t_diff;
         gettimeofday(&t_start, NULL);
 
-        Radix4::Sort(d_in, d_out, N, d_histogram1, d_histogram2, d_tmp_storage, 0xF);
+        Radix4::Sort(d_in, d_out, N, d_histogram1, d_histogram2, d_tmp_storage, mask);
         cudaDeviceSynchronize();
 
         gettimeofday(&t_end, NULL);
@@ -172,11 +187,11 @@ int main(int argc, char* argv[]) {
     // sizes.push_back(10000000);
     // sizes.push_back(100000000);
     
-    sizes.push_back(100000000);
+    sizes.push_back(4 * 1024);
     // sizes.push(100);
 
     printf("\nUnsigned int:\n");
-    bench<unsigned int>(sizes);
+    bench<unsigned int, 8, 8, 256>(sizes);
 
     // printf("\nFuthark:\n");
     // RadixFut::Sort()
