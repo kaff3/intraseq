@@ -59,4 +59,12 @@ void writeRuntime(const char *fname, double elapsed) {
   fclose(f);
 }
 
+template<typename T>
+void randomInitNat(T* data, const size_t size, const size_t H) {
+    for (size_t i = 0; i < size; i++) {
+        T r = rand();
+        data[i] = r % H;
+    }
+}
+
 #endif // HISTO_HELPER
