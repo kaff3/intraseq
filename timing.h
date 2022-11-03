@@ -21,7 +21,7 @@ public:
         timeval_subtract(&this->t_diff, &this->t_end, &this->t_start);
     }
 
-    int Get() {
+    double Get() {
         return this->t_diff.tv_sec * 1e6 + this->t_diff.tv_usec;
     }
 
