@@ -146,7 +146,7 @@ rankKernel(T* d_in, T* d_out, size_t N, unsigned int* d_histogram, int digit, in
                 for_scanning[j] = offsets[index];
             } 
         }
-        
+        __syncthreads();
         // excl scan
         typedef cub::BlockScan<unsigned int, TS> BlockScan;
         __shared__ typename BlockScan::TempStorage temp_storage;
