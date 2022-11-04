@@ -1,6 +1,7 @@
 
 // Include the three versions of radix we want to test
-#include "./radix.cuh"
+// #include "./radix.cuh"
+#include "./radix-no-opt.cuh"
 #include "./radix-cub.cuh"
 #include "./helper.cu.h"
 // Standard includes
@@ -73,15 +74,17 @@ void bench(std::vector<int> sizes) {
         T* d_out;
         unsigned int* d_histogram1;
         unsigned int* d_histogram2;
+        unsigned int* d_histogram3;
         void*         d_tmp_storage;
         cudaMalloc((void**)&d_in,  arr_size);
         cudaMalloc((void**)&d_out, arr_size);
         cudaMalloc((void**)&d_histogram1, Radix4::HistogramStorageSize(N));
         cudaMalloc((void**)&d_histogram2, Radix4::HistogramStorageSize(N));
+        cudaMalloc((void**)&d_histogram3, Radix4::HistogramStorageSize(N));
         cudaMalloc((void**)&d_tmp_storage, Radix4::TempStorageSize(N, d_histogram1));
 
         // Dry runs
-        Radix4::Sort(d_in, d_out, N, d_histogram1, d_histogram2, d_tmp_storage, mask);
+        Radix4::Sort(d_in, d_out, N, d_histogram1, d_histogram2, d_histogram3, d_tmp_storage, mask);
         RadixSortCub<T>(d_in, d_out, N);
         
         cudaDeviceSynchronize();
@@ -96,7 +99,7 @@ void bench(std::vector<int> sizes) {
         struct timeval t_start, t_end, t_diff;
         gettimeofday(&t_start, NULL);
 
-        Radix4::Sort(d_in, d_out, N, d_histogram1, d_histogram2, d_tmp_storage, mask);
+        Radix4::Sort(d_in, d_out, N, d_histogram1, d_histogram2, d_histogram3, d_tmp_storage, mask);
         cudaDeviceSynchronize();
 
         gettimeofday(&t_end, NULL);
@@ -160,6 +163,7 @@ void bench(std::vector<int> sizes) {
         cudaFree(d_out);
         cudaFree(d_histogram1);
         cudaFree(d_histogram2);
+        cudaFree(d_histogram3);
         cudaFree(d_tmp_storage);
         free(h_in);
         free(h_out_our);
@@ -185,6 +189,9 @@ int main(int argc, char* argv[]) {
     // sizes.push_back(1000000);
     // sizes.push_back(10000000);
     sizes.push_back(100000000);
+    // sizes.push_back(320000000);
+
+
     
     // sizes.push_back(4 * 1024);
     // sizes.push(100);
