@@ -6,6 +6,7 @@
 #include"cub/cub.cuh"
 #include"transpose-kernels.cu.h"
 #include"transpose-host.cu.h"
+#include"timing.h"
 
 #include<stdio.h>
 #include<stdint.h>
@@ -271,6 +272,29 @@ public:
 
         size_t tmp_storage_bytes = TempStorageSize(N, d_histogram);
 
+        // // Find max
+        // Timer t1;
+        // t1.Start(); 
+        // void     *d_temp_max = NULL;
+        // size_t   storage_bytes_max = 0;
+        // cub::DeviceReduce::Max(d_temp_max, storage_bytes_max, d_in, d_out, N);
+        // cudaMalloc(&d_temp_max, storage_bytes_max);
+        // cub::DeviceReduce::Max(d_temp_max, storage_bytes_max, d_in, d_out, N);
+        // T max;
+        // cudaMemcpy(&max, d_out, sizeof(T), cudaMemcpyDeviceToHost);
+
+        // t1.Stop();
+        // printf("max time: %.2f\n", t1.Get());
+
+        // unsigned int v = 1;
+        // unsigned int bits = 1;
+        // while(max > v){
+        //     v <<= 1; 
+        //     v |= 1;
+        //     bits++;
+        // }
+        // printf("bits max: %i\n", bits);
+        // int iterations = (bits + B - 1) / B;
         int iterations = sizeof(T)*8 / B;
         for (int i = 0; i < iterations; i++) {
 

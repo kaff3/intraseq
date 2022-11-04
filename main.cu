@@ -83,14 +83,16 @@ void bench(std::vector<int> sizes) {
         cudaMalloc((void**)&d_histogram3, Radix4::HistogramStorageSize(N));
         cudaMalloc((void**)&d_tmp_storage, Radix4::TempStorageSize(N, d_histogram1));
 
+        // Initialize the array to be sorted and transfer to device
+        randomInitNat<T>(h_in, N, N);
+
+
         // Dry runs
         Radix4::Sort(d_in, d_out, N, d_histogram1, d_histogram2, d_histogram3, d_tmp_storage, mask);
         RadixSortCub<T>(d_in, d_out, N);
         
         cudaDeviceSynchronize();
 
-        // Initialize the array to be sorted and transfer to device
-        randomInitNat<T>(h_in, N, N);
         
         cudaMemcpy(d_in, h_in, arr_size, cudaMemcpyHostToDevice);
 
