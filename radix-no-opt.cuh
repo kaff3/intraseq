@@ -168,7 +168,7 @@ template <
     int TILE_ELEMENTS,
     int HISTOGRAM_ELEMENTS >
 __global__ void 
-globalScatterKernel(T* d_in, T* d_out, int N, unsigned int* d_histogram, unsigned int* d_histogram_scan, 
+globalScatterKernel(T* d_in, T* d_out, size_t N, unsigned int* d_histogram, unsigned int* d_histogram_scan, 
                     int digit, int mask) {
     int tid = threadIdx.x;
 
@@ -200,8 +200,8 @@ globalScatterKernel(T* d_in, T* d_out, int N, unsigned int* d_histogram, unsigne
 
     #pragma unroll
     for (int i = 0; i < E; i++){
-        unsigned int loc_idx = tid + (i * TS);
-        unsigned int index = blockIdx.x * TILE_ELEMENTS + loc_idx;
+        size_t loc_idx = tid + (i * TS);
+        size_t index = blockIdx.x * TILE_ELEMENTS + loc_idx;
 
         if (index < N){
             T full_val = d_in[index];
@@ -251,13 +251,13 @@ public:
     // Radix() {}
     // ~Radix() {}
 
-    static size_t HistogramStorageSize(int N) {
-        int num_blocks = (N + TILE_ELEMENTS - 1) / TILE_ELEMENTS;
+    static size_t HistogramStorageSize(size_t N) {
+        size_t num_blocks = (N + TILE_ELEMENTS - 1) / TILE_ELEMENTS;
         return num_blocks * HISTOGRAM_SIZE;
     }
 
-    static size_t TempStorageSize(int N, unsigned int* d_histogram) {
-        int num_blocks = (N + TILE_ELEMENTS - 1) / TILE_ELEMENTS;
+    static size_t TempStorageSize(size_t N, unsigned int* d_histogram) {
+        size_t num_blocks = (N + TILE_ELEMENTS - 1) / TILE_ELEMENTS;
         size_t size = 0;
         cub::DeviceScan::ExclusiveScan(NULL, size, d_histogram, d_histogram, cub::Sum(), 0, HISTOGRAM_ELEMENTS*num_blocks);
         return size;
@@ -268,33 +268,10 @@ public:
         unsigned int* d_histogram, unsigned int* d_histogram_scan, unsigned int* d_histogram_transpose,
         void* d_tmp_storage, int mask) {
 
-        int num_blocks = (N + TILE_ELEMENTS - 1) / TILE_ELEMENTS;
+        size_t num_blocks = (N + TILE_ELEMENTS - 1) / TILE_ELEMENTS;
 
         size_t tmp_storage_bytes = TempStorageSize(N, d_histogram);
 
-        // // Find max
-        // Timer t1;
-        // t1.Start(); 
-        // void     *d_temp_max = NULL;
-        // size_t   storage_bytes_max = 0;
-        // cub::DeviceReduce::Max(d_temp_max, storage_bytes_max, d_in, d_out, N);
-        // cudaMalloc(&d_temp_max, storage_bytes_max);
-        // cub::DeviceReduce::Max(d_temp_max, storage_bytes_max, d_in, d_out, N);
-        // T max;
-        // cudaMemcpy(&max, d_out, sizeof(T), cudaMemcpyDeviceToHost);
-
-        // t1.Stop();
-        // printf("max time: %.2f\n", t1.Get());
-
-        // unsigned int v = 1;
-        // unsigned int bits = 1;
-        // while(max > v){
-        //     v <<= 1; 
-        //     v |= 1;
-        //     bits++;
-        // }
-        // printf("bits max: %i\n", bits);
-        // int iterations = (bits + B - 1) / B;
         int iterations = sizeof(T)*8 / B;
         for (int i = 0; i < iterations; i++) {
 
@@ -302,11 +279,11 @@ public:
                 <<<num_blocks, TS>>>(d_in, d_out, N, d_histogram, i, mask);
 
             // transpose
-            transposeTiled<unsigned int, sizeof(T)>(d_histogram, d_histogram_transpose, num_blocks, HISTOGRAM_ELEMENTS);
+            transposeTiled<unsigned int, 32>(d_histogram, d_histogram_transpose, num_blocks, HISTOGRAM_ELEMENTS);
             // scan
             cub::DeviceScan::ExclusiveScan(d_tmp_storage, tmp_storage_bytes, d_histogram_transpose, d_histogram_scan, cub::Sum(), 0, (int)HISTOGRAM_ELEMENTS*num_blocks);
             // transpose
-            transposeTiled<unsigned int, sizeof(T)>(d_histogram_scan, d_histogram_transpose, HISTOGRAM_ELEMENTS, num_blocks);
+            transposeTiled<unsigned int, 32>(d_histogram_scan, d_histogram_transpose, HISTOGRAM_ELEMENTS, num_blocks);
             
             unsigned int* tmp;
             tmp = d_histogram_scan;

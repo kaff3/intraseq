@@ -55,7 +55,7 @@ inline uint32_t ceilLog2(uint32_t H) {
     return log2_val;
 }
 
-void writeRuntimes(std::vector<int> sizes, std::vector<float> our, std::vector<float> cub, const char* fname) {
+void writeRuntimes(std::vector<size_t> sizes, std::vector<float> our, std::vector<float> cub, const char* fname) {
     std::stringstream ss;
     for (size_t i = 0; i < sizes.size(); i++) {
         if (i != 0)

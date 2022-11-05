@@ -46,16 +46,18 @@ template<
     int B, 
     int E,
     int TS >
-void bench(std::vector<int> sizes, int gpu_runs, const char* out_file) {
+void bench(std::vector<size_t> sizes, int gpu_runs, const char* out_file) {
     
     std::vector<float> avg_our;
     std::vector<float> avg_cub;
 
     for (int i = 0; i < sizes.size(); i++) {
-        int N = sizes[i];
+        size_t N = sizes[i];
         printf("===============================\n");
         printf("N: %i\n", N);
         size_t arr_size = N * sizeof(T);
+
+        printf("arr_size: %lu\n", arr_size);
 
         // Host allocations
         T* h_in      = (T*)malloc(arr_size);
@@ -105,7 +107,6 @@ void bench(std::vector<int> sizes, int gpu_runs, const char* out_file) {
             Radix4::Sort(d_in, d_out, N, d_histogram1, d_histogram2, d_histogram3, d_tmp_storage, mask);
             cudaDeviceSynchronize();
             t1.Stop();
-            // printf("Our:    %i in   %.2f\n", sizes[i],t1.Get());
 
             // Save sorted array to host for validation
             cudaMemcpy(h_out_our, d_in, arr_size, cudaMemcpyDeviceToHost);
@@ -117,7 +118,6 @@ void bench(std::vector<int> sizes, int gpu_runs, const char* out_file) {
             RadixSortCub<T>(d_in, d_out, N);
             cudaDeviceSynchronize();
             t2.Stop();
-            // printf("Cub:    %i in   %.2f\n", sizes[i], t2.Get());
 
             cudaMemcpy(h_out_cub, d_out, arr_size, cudaMemcpyDeviceToHost);
 
@@ -140,6 +140,7 @@ void bench(std::vector<int> sizes, int gpu_runs, const char* out_file) {
 
         printf("Our: %.2f\n", run_our);
         printf("Cub: %.2f\n", run_cub);
+        printf("factor: %f\n", run_our/run_cub);
 
 
         // Have to allocate and free each iteration of outer loop as the sizes change but they are not timed
@@ -169,19 +170,19 @@ int main(int argc, char* argv[]) {
 
     int gpu_runs = atoi(argv[1]);
 
-    std::vector<int> sizes;
+    std::vector<size_t> sizes;
     // sizes.push_back(333);       
     // sizes.push_back(1024);       
-    sizes.push_back(1000000);
-    sizes.push_back(10000000);
-    sizes.push_back(100000000);
-    // sizes.push_back(320000000);
+    // sizes.push_back(1000000);
+    // sizes.push_back(10000000);
+    // sizes.push_back(100000000);
+    // sizes.push_back(500000000);
+    // sizes.push_back(800000000);
+    sizes.push_back(1000000000);
+
 
     printf("\nUnsigned int:\n");
     bench<unsigned int, 8, 8, 512>(sizes, gpu_runs, "data/u32-8-8-512.csv");
-
-    // printf("\nFuthark:\n");
-    // RadixFut::Sort()
 
     // printf("\nUnsigned long:\n");
     // bench<unsigned long>(sizes);
@@ -190,7 +191,7 @@ int main(int argc, char* argv[]) {
     // bench<unsigned short>(sizes);
     
     // printf("\nUnsigned char:\n");
-    // bench<unsigned char>(sizes);
+    // bench<unsigned char, 8, 8, 512>(sizes, gpu_runs, "data/u8-8-8-512.csv");
 
 
     return 0;
