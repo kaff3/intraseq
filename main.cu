@@ -53,6 +53,8 @@ void bench(std::vector<int> sizes, int gpu_runs, const char* out_file) {
 
     for (int i = 0; i < sizes.size(); i++) {
         int N = sizes[i];
+        printf("===============================\n");
+        printf("N: %i\n", N);
         size_t arr_size = N * sizeof(T);
 
         // Host allocations
@@ -103,7 +105,7 @@ void bench(std::vector<int> sizes, int gpu_runs, const char* out_file) {
             Radix4::Sort(d_in, d_out, N, d_histogram1, d_histogram2, d_histogram3, d_tmp_storage, mask);
             cudaDeviceSynchronize();
             t1.Stop();
-            printf("Our:    %i in   %.2f\n", sizes[i],t1.Get());
+            // printf("Our:    %i in   %.2f\n", sizes[i],t1.Get());
 
             // Save sorted array to host for validation
             cudaMemcpy(h_out_our, d_in, arr_size, cudaMemcpyDeviceToHost);
@@ -115,16 +117,13 @@ void bench(std::vector<int> sizes, int gpu_runs, const char* out_file) {
             RadixSortCub<T>(d_in, d_out, N);
             cudaDeviceSynchronize();
             t2.Stop();
-            printf("Cub:    %i in   %.2f\n", sizes[i], t2.Get());
+            // printf("Cub:    %i in   %.2f\n", sizes[i], t2.Get());
 
             cudaMemcpy(h_out_cub, d_out, arr_size, cudaMemcpyDeviceToHost);
 
-            // Validate if our implementation did it correct
-            printf("Validation: ");
-            if (validate<T>(h_out_our, h_out_cub, N)) {
-                printf("VALID\n");
-            } else {
-                printf("INVALID\n");
+            // Print if we do not validate
+            if (!validate<T>(h_out_our, h_out_cub, N)) {
+                printf("INVALID. Size %i run %i\n", N, j);
             }
 
             // Save runtimes
@@ -133,8 +132,15 @@ void bench(std::vector<int> sizes, int gpu_runs, const char* out_file) {
         }
 
         // Save the average runtimes
-        avg_our.push_back(average(time_our));
-        avg_cub.push_back(average(time_cub));
+        float run_our = average(time_our);
+        float run_cub = average(time_cub);
+
+        avg_our.push_back(run_our);
+        avg_cub.push_back(run_cub);
+
+        printf("Our: %.2f\n", run_our);
+        printf("Cub: %.2f\n", run_cub);
+
 
         // Have to allocate and free each iteration of outer loop as the sizes change but they are not timed
         cudaFree(d_in);
