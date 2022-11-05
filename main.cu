@@ -1,30 +1,23 @@
 
 // Include the three versions of radix we want to test
 // #include "./radix.cuh"
-#include "./radix-no-opt.cuh"
-#include "./radix-cub.cuh"
-#include "./helper.cu.h"
+#include"./radix-no-opt.cuh"
+#include"./radix-cub.cuh"
+#include"./helper.cu.h"
 // Standard includes
 #include<stdio.h>
 #include<stdint.h>
 #include<vector>
-#include <sys/time.h>
-#include <time.h>
-#include <math.h>
-#include <stdlib.h>
-
+#include<sys/time.h>
+#include<time.h>
+#include<math.h>
+#include<stdlib.h>
+#include<sstream>
 
 // Cuda includes
 #include"cub/cub.cuh"
 #include<cuda_runtime.h>
 
-// template<typename T>
-// void randomInitNat(T* data, const size_t size, const size_t H) {
-//     for (size_t i = 0; i < size; i++) {
-//         T r = rand();
-//         data[i] = r % H;
-//     }
-// }
 
 int GetMask(int b){
     int res = 0;
@@ -53,8 +46,11 @@ template<
     int B, 
     int E,
     int TS >
-void bench(std::vector<int> sizes) {
+void bench(std::vector<int> sizes, int gpu_runs, const char* out_file) {
     
+    std::vector<float> avg_our;
+    std::vector<float> avg_cub;
+
     for (int i = 0; i < sizes.size(); i++) {
         int N = sizes[i];
         size_t arr_size = N * sizeof(T);
@@ -83,84 +79,64 @@ void bench(std::vector<int> sizes) {
         cudaMalloc((void**)&d_histogram3, Radix4::HistogramStorageSize(N));
         cudaMalloc((void**)&d_tmp_storage, Radix4::TempStorageSize(N, d_histogram1));
 
-        // Initialize the array to be sorted and transfer to device
-        randomInitNat<T>(h_in, N, N);
+        std::vector<Timer> time_our;
+        std::vector<Timer> time_cub;
 
+        for (int j = 0; j < gpu_runs; j++) {
 
-        // Dry runs
-        Radix4::Sort(d_in, d_out, N, d_histogram1, d_histogram2, d_histogram3, d_tmp_storage, mask);
-        RadixSortCub<T>(d_in, d_out, N);
-        
-        cudaDeviceSynchronize();
+            // Initialize the array to be sorted and transfer to device
+            randomInitNat<T>(h_in, N, N);
 
-        
-        cudaMemcpy(d_in, h_in, arr_size, cudaMemcpyHostToDevice);
+            // Timers for our version and cub
+            Timer t1, t2;
 
-        // Run our version and save the result
-        double elapsed_us;
-        struct timeval t_start, t_end, t_diff;
-        gettimeofday(&t_start, NULL);
+            // Dry runs
+            Radix4::Sort(d_in, d_out, N, d_histogram1, d_histogram2, d_histogram3, d_tmp_storage, mask);
+            RadixSortCub<T>(d_in, d_out, N);
+            cudaDeviceSynchronize();
 
-        Radix4::Sort(d_in, d_out, N, d_histogram1, d_histogram2, d_histogram3, d_tmp_storage, mask);
-        cudaDeviceSynchronize();
+            // Move array to device
+            cudaMemcpy(d_in, h_in, arr_size, cudaMemcpyHostToDevice);
 
-        gettimeofday(&t_end, NULL);
-        timeval_subtract(&t_diff, &t_end, &t_start);
-        elapsed_us = (t_diff.tv_sec*1e6+t_diff.tv_usec);
-        printf("Our:    %i in   %.2f\n", sizes[i],elapsed_us);
+            // Run our version and save the result
+            t1.Start();
+            Radix4::Sort(d_in, d_out, N, d_histogram1, d_histogram2, d_histogram3, d_tmp_storage, mask);
+            cudaDeviceSynchronize();
+            t1.Stop();
+            printf("Our:    %i in   %.2f\n", sizes[i],t1.Get());
 
-        cudaMemcpy(h_out_our, d_in, arr_size, cudaMemcpyDeviceToHost);
+            // Save sorted array to host for validation
+            cudaMemcpy(h_out_our, d_in, arr_size, cudaMemcpyDeviceToHost);
 
-        // Now the CUB version
-        cudaMemcpy(d_in, h_in, arr_size, cudaMemcpyHostToDevice);
+            // Now the CUB version
+            cudaMemcpy(d_in, h_in, arr_size, cudaMemcpyHostToDevice);
 
-        double elapsed_cub;
-        struct timeval t_start_cub, t_end_cub, t_diff_cub;
-        gettimeofday(&t_start_cub, NULL);
+            t2.Start();
+            RadixSortCub<T>(d_in, d_out, N);
+            cudaDeviceSynchronize();
+            t2.Stop();
+            printf("Cub:    %i in   %.2f\n", sizes[i], t2.Get());
 
-        RadixSortCub<T>(d_in, d_out, N);
-        // cudaDeviceSynchronize();
+            cudaMemcpy(h_out_cub, d_out, arr_size, cudaMemcpyDeviceToHost);
 
-        gettimeofday(&t_end_cub, NULL);
-        timeval_subtract(&t_diff_cub, &t_end_cub, &t_start_cub);
-        elapsed_cub = (t_diff_cub.tv_sec*1e6+t_diff_cub.tv_usec);
-        printf("Cub:    %i in   %.2f\n", sizes[i],elapsed_cub);
+            // Validate if our implementation did it correct
+            printf("Validation: ");
+            if (validate<T>(h_out_our, h_out_cub, N)) {
+                printf("VALID\n");
+            } else {
+                printf("INVALID\n");
+            }
 
-        cudaMemcpy(h_out_cub, d_out, arr_size, cudaMemcpyDeviceToHost);
-
-        // for(int i = 0; i < N; i++) {
-        //     printf("\n");
-        // }
-
-        // Now futhark
-        // cudaMemcpy(d_in, h_in, arr_size, cudaMemcpyHostToDevice);
-        // double elapsed_fut;
-        // struct timeval t_start_fut, t_end_fut, t_diff_fut;
-        // gettimeofday(&t_start_fut, NULL);
-        // RadixFut::Sort(d_in, d_out, N);
-        // gettimeofday(&t_end_fut, NULL);
-        // timeval_subtract(&t_diff_fut, &t_end_fut, &t_start_fut);
-        // elapsed_fut = (t_diff_fut.tv_sec*1e6+t_diff_fut.tv_usec);
-        // printf("Fut:    %i in   %.2f\n", sizes[i],elapsed_fut);
-
-        // cudaMemcpy(h_out_fut, d_out, arr_size, cudaMemcpyDeviceToHost);
-
-
-
-
-        // Validate if our implementation did it correct
-        printf("Validation: ");
-        if (validate<T>(h_out_our, h_out_cub, N)) {
-            printf("VALID\n");
-        } else {
-            printf("INVALID\n");
+            // Save runtimes
+            time_our.push_back(t1);
+            time_cub.push_back(t2);
         }
 
-        // for (int j = 0; j < N; j++) {
-        //     printf("%10x   %10x   %10x\n", h_out_our[j], h_out_cub[j], h_in[j]);
-        // }
+        // Save the average runtimes
+        avg_our.push_back(average(time_our));
+        avg_cub.push_back(average(time_cub));
 
-        // Have to allocate and free eeach iteration as the sizes change
+        // Have to allocate and free each iteration of outer loop as the sizes change but they are not timed
         cudaFree(d_in);
         cudaFree(d_out);
         cudaFree(d_histogram1);
@@ -172,34 +148,31 @@ void bench(std::vector<int> sizes) {
         free(h_out_cub);
         free(h_out_fut);
     }
+
+    writeRuntimes(sizes, avg_our, avg_cub, out_file);
+
 }
 
 
 int main(int argc, char* argv[]) {
 
-    // if (argc < 2) {
-    //     printf("Usage: ./radix <array size>\n");
-    //     return 0;
-    // }
+    if (argc < 2) {
+        printf("Usage: ./radix <gpu runs>\n");
+        return 0;
+    }
 
-    // int N = atoi(argv[1]);
-    // size_t arr_size = N * sizeof(unsigned int);
+    int gpu_runs = atoi(argv[1]);
 
     std::vector<int> sizes;
     // sizes.push_back(333);       
     // sizes.push_back(1024);       
-    // sizes.push_back(1000000);
-    // sizes.push_back(10000000);
+    sizes.push_back(1000000);
+    sizes.push_back(10000000);
     sizes.push_back(100000000);
     // sizes.push_back(320000000);
 
-
-    
-    // sizes.push_back(4 * 1024);
-    // sizes.push(100);
-
     printf("\nUnsigned int:\n");
-    bench<unsigned int, 8, 8, 512>(sizes);
+    bench<unsigned int, 8, 8, 512>(sizes, gpu_runs, "data/u32-8-8-512.csv");
 
     // printf("\nFuthark:\n");
     // RadixFut::Sort()

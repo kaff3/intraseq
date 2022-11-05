@@ -27,4 +27,13 @@ public:
 
 };
 
+
+float average(std::vector<Timer> times) {
+    float acc = 0.0;
+    for(int i = 0; i < times.size(); i++) {
+        acc += times[i].Get();
+    }
+    return acc / times.size();
+}
+
 #endif // PMPH_TIMING

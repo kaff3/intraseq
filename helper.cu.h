@@ -7,6 +7,9 @@
 #include <math.h>
 #include <sys/time.h>
 #include <time.h>
+#include <vector>
+#include <sstream>
+#include <string>
 
 #define GPU_RUNS    400
 
@@ -52,11 +55,32 @@ inline uint32_t ceilLog2(uint32_t H) {
     return log2_val;
 }
 
-void writeRuntime(const char *fname, double elapsed) {
-  FILE *f = fopen(fname, "w");
-  assert(f != NULL);
-  fprintf(f, "%f", elapsed);
-  fclose(f);
+void writeRuntimes(std::vector<int> sizes, std::vector<float> our, std::vector<float> cub, const char* fname) {
+    std::stringstream ss;
+    for (size_t i = 0; i < sizes.size(); i++) {
+        if (i != 0)
+            ss << ",";
+        ss << sizes[i];
+    }
+    ss << "\n";
+    for (size_t i = 0; i < our.size(); i++) {
+        if (i != 0)
+            ss << ",";
+        ss << our[i];
+    }
+    ss << "\n";
+    for (size_t i = 0; i < cub.size(); i++) {
+        if (i != 0)
+            ss << ",";
+        ss << cub[i];
+    }
+    std::string s = ss.str();
+
+    FILE* f = fopen(fname, "w");
+    assert(f != NULL);
+    fprintf(f, "%s", s.c_str());
+    fclose(f);
+
 }
 
 template<typename T>
