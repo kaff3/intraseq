@@ -54,7 +54,7 @@ void bench(std::vector<size_t> sizes, int gpu_runs, const char* out_file) {
     for (int i = 0; i < sizes.size(); i++) {
         size_t N = sizes[i];
         printf("===============================\n");
-        printf("N: %i\n", N);
+        printf("N: %lu\n", N);
         size_t arr_size = N * sizeof(T);
 
         printf("arr_size: %lu\n", arr_size);
@@ -83,6 +83,17 @@ void bench(std::vector<size_t> sizes, int gpu_runs, const char* out_file) {
         cudaMalloc((void**)&d_histogram3, Radix4::HistogramStorageSize(N));
         cudaMalloc((void**)&d_tmp_storage, Radix4::TempStorageSize(N, d_histogram1));
 
+        void* d_tmp_storage_cub = NULL;
+        size_t tmp_storage_bytes = 0;
+        cub::DeviceRadixSort::SortKeys(d_tmp_storage_cub, tmp_storage_bytes, d_in, d_out, N);
+        cudaMalloc(&d_tmp_storage_cub, tmp_storage_bytes);
+
+
+        // Dry runs
+        Radix4::Sort(d_in, d_out, N, d_histogram1, d_histogram2, d_histogram3, d_tmp_storage, mask);
+        RadixSortCub<T>(d_in, d_out, N, d_tmp_storage_cub, tmp_storage_bytes);
+        cudaDeviceSynchronize();
+
         std::vector<Timer> time_our;
         std::vector<Timer> time_cub;
 
@@ -93,11 +104,6 @@ void bench(std::vector<size_t> sizes, int gpu_runs, const char* out_file) {
 
             // Timers for our version and cub
             Timer t1, t2;
-
-            // Dry runs
-            Radix4::Sort(d_in, d_out, N, d_histogram1, d_histogram2, d_histogram3, d_tmp_storage, mask);
-            RadixSortCub<T>(d_in, d_out, N);
-            cudaDeviceSynchronize();
 
             // Move array to device
             cudaMemcpy(d_in, h_in, arr_size, cudaMemcpyHostToDevice);
@@ -113,18 +119,18 @@ void bench(std::vector<size_t> sizes, int gpu_runs, const char* out_file) {
 
             // Now the CUB version
             cudaMemcpy(d_in, h_in, arr_size, cudaMemcpyHostToDevice);
-
+ 
             t2.Start();
-            RadixSortCub<T>(d_in, d_out, N);
+            RadixSortCub<T>(d_in, d_out, N, d_tmp_storage_cub, tmp_storage_bytes);
             cudaDeviceSynchronize();
             t2.Stop();
 
             cudaMemcpy(h_out_cub, d_out, arr_size, cudaMemcpyDeviceToHost);
 
             // Print if we do not validate
-            if (!validate<T>(h_out_our, h_out_cub, N)) {
-                printf("INVALID. Size %i run %i\n", N, j);
-            }
+            // if (!validate<T>(h_out_our, h_out_cub, N)) {
+            //     printf("INVALID. Size %i run %i\n", N, j);
+            // }
 
             // Save runtimes
             time_our.push_back(t1);
@@ -150,6 +156,7 @@ void bench(std::vector<size_t> sizes, int gpu_runs, const char* out_file) {
         cudaFree(d_histogram2);
         cudaFree(d_histogram3);
         cudaFree(d_tmp_storage);
+        cudaFree(d_tmp_storage_cub);
         free(h_in);
         free(h_out_our);
         free(h_out_cub);
@@ -171,18 +178,19 @@ int main(int argc, char* argv[]) {
     int gpu_runs = atoi(argv[1]);
 
     std::vector<size_t> sizes;
-    // sizes.push_back(333);       
-    // sizes.push_back(1024);       
-    // sizes.push_back(1000000);
-    // sizes.push_back(10000000);
-    // sizes.push_back(100000000);
-    // sizes.push_back(500000000);
-    // sizes.push_back(800000000);
+    sizes.push_back(100000);
+    sizes.push_back(500000);
+    sizes.push_back(1000000);
+    sizes.push_back(5000000);
+    sizes.push_back(10000000);
+    sizes.push_back(50000000);
+    sizes.push_back(100000000);
+    sizes.push_back(500000000);
     sizes.push_back(1000000000);
 
 
     printf("\nUnsigned int:\n");
-    bench<unsigned int, 8, 8, 512>(sizes, gpu_runs, "data/u32-8-8-512.csv");
+    bench<unsigned int, 4, 4, 256>(sizes, gpu_runs, "data/u32-8-8-512.csv");
 
     // printf("\nUnsigned long:\n");
     // bench<unsigned long>(sizes);
