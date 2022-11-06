@@ -57,13 +57,11 @@ void bench(std::vector<size_t> sizes, int gpu_runs, const char* out_file) {
         printf("N: %lu\n", N);
         size_t arr_size = N * sizeof(T);
 
-        printf("arr_size: %lu\n", arr_size);
 
         // Host allocations
         T* h_in      = (T*)malloc(arr_size);
         T* h_out_our = (T*)malloc(arr_size);
         T* h_out_cub = (T*)malloc(arr_size);
-        T* h_out_fut = (T*)malloc(arr_size);
 
         // Instantiate our radix sort algorithm with template with a typedef
         typedef Radix<T, B, E, TS> Radix4;
@@ -83,6 +81,7 @@ void bench(std::vector<size_t> sizes, int gpu_runs, const char* out_file) {
         cudaMalloc((void**)&d_histogram3, Radix4::HistogramStorageSize(N));
         cudaMalloc((void**)&d_tmp_storage, Radix4::TempStorageSize(N, d_histogram1));
 
+        // Allocations for cub version
         void* d_tmp_storage_cub = NULL;
         size_t tmp_storage_bytes = 0;
         cub::DeviceRadixSort::SortKeys(d_tmp_storage_cub, tmp_storage_bytes, d_in, d_out, N);
@@ -164,10 +163,89 @@ void bench(std::vector<size_t> sizes, int gpu_runs, const char* out_file) {
         free(h_in);
         free(h_out_our);
         free(h_out_cub);
-        free(h_out_fut);
     }
 
     writeRuntimes(sizes, avg_our, avg_cub, out_file);
+
+}
+
+template<
+    typename T, 
+    int B, 
+    int E,
+    int TS >
+void benchTuning(std::vector<size_t> sizes, int gpu_runs, const char* out_file) {
+
+    std::vector<float> avg_times;
+    
+    for (int i = 0; i < sizes.size(); i++) {
+        size_t N = sizes[i];
+        printf("===============================\n");
+        printf("N: %lu\n", N);
+        size_t arr_size = N * sizeof(T);
+
+
+        // Host allocations
+        T* h_in      = (T*)malloc(arr_size);
+
+        // Instantiate our radix sort algorithm with template with a typedef
+        typedef Radix<T, B, E, TS> Radix4;
+        int mask = GetMask(B);
+
+        // Device allocations
+        T* d_in;
+        T* d_out;
+        unsigned int* d_histogram1;
+        unsigned int* d_histogram2;
+        unsigned int* d_histogram3;
+        void*         d_tmp_storage;
+        cudaMalloc((void**)&d_in,  arr_size);
+        cudaMalloc((void**)&d_out, arr_size);
+        cudaMalloc((void**)&d_histogram1, Radix4::HistogramStorageSize(N));
+        cudaMalloc((void**)&d_histogram2, Radix4::HistogramStorageSize(N));
+        cudaMalloc((void**)&d_histogram3, Radix4::HistogramStorageSize(N));
+        cudaMalloc((void**)&d_tmp_storage, Radix4::TempStorageSize(N, d_histogram1));
+
+        // Dry run
+        Radix4::Sort(d_in, d_out, N, d_histogram1, d_histogram2, d_histogram3, d_tmp_storage, mask);
+        cudaDeviceSynchronize();
+
+        std::vector<Timer> times;
+
+        for (int j = 0; j < gpu_runs; j++) {
+
+            Timer t1;
+
+             // Initialize the array to be sorted and transfer to device
+            randomInitNat<T>(h_in, N, N);
+
+            // Move array to device
+            cudaMemcpy(d_in, h_in, arr_size, cudaMemcpyHostToDevice);
+
+            // Run our version and save the result
+            t1.Start();
+            Radix4::Sort(d_in, d_out, N, d_histogram1, d_histogram2, d_histogram3, d_tmp_storage, mask);
+            cudaDeviceSynchronize();
+            t1.Stop();
+
+            times.push_back(t1);
+        }
+
+        float avg = average(times);
+        avg_times.push_back(avg);
+
+        printf("Time: %.2f\n", avg);
+
+        cudaFree(d_in);
+        cudaFree(d_out);
+        cudaFree(d_histogram1);
+        cudaFree(d_histogram2);
+        cudaFree(d_histogram3);
+        cudaFree(d_tmp_storage);
+        free(h_in);
+    }
+
+    writeRuntimes(sizes, avg_times, avg_times, out_file);
 
 }
 
@@ -182,32 +260,44 @@ int main(int argc, char* argv[]) {
     int gpu_runs = atoi(argv[1]);
 
     std::vector<size_t> sizes;
-    size_t count = 10000000;
-    for (int i = 0; i < 100; i++) {
-        sizes.push_back(count);
-        count += 10000000;
-    }
-    // sizes.push_back(100000);
-    // sizes.push_back(250000);
-    // sizes.push_back(500000);
-    // sizes.push_back(750000);
-    // sizes.push_back(1000000);
-    // sizes.push_back(2500000);
-    // sizes.push_back(5000000);
-    // sizes.push_back(7500000);
-    // sizes.push_back(10000000);
-    // sizes.push_back(25000000);
-    // sizes.push_back(50000000);
-    // sizes.push_back(75000000);
-    // sizes.push_back(100000000);
-    // sizes.push_back(250000000);
-    // sizes.push_back(500000000);
-    // sizes.push_back(750000000);
-    // sizes.push_back(1000000000);
+    sizes.push_back(100000);
+    sizes.push_back(250000);
+    sizes.push_back(500000);
+    sizes.push_back(750000);
+    sizes.push_back(1000000);
+    sizes.push_back(2500000);
+    sizes.push_back(5000000);
+    sizes.push_back(7500000);
+    sizes.push_back(10000000);
+    sizes.push_back(25000000);
+    sizes.push_back(50000000);
+    sizes.push_back(75000000);
+    sizes.push_back(100000000);
+    sizes.push_back(250000000);
+    sizes.push_back(500000000);
+    sizes.push_back(750000000);
+    sizes.push_back(1000000000);
+
+    // printf("===== Parameter B tests =====\n");
+    // benchTuning<unsigned int, 1, 4, 256>(sizes, gpu_runs, "data/B-1-4-256.csv");
+    // benchTuning<unsigned int, 4, 4, 256>(sizes, gpu_runs, "data/B-4-4-256.csv");
+    // benchTuning<unsigned int, 8, 4, 256>(sizes, gpu_runs, "data/B-8-4-256.csv");
+
+    // printf("===== Parameter E tests =====\n");
+    // benchTuning<unsigned int, 4, 1, 256>(sizes, gpu_runs, "data/E-4-1-256.csv");
+    // benchTuning<unsigned int, 4, 4, 256>(sizes, gpu_runs, "data/E-4-4-256.csv");
+    // benchTuning<unsigned int, 4, 8, 256>(sizes, gpu_runs, "data/E-4-8-256.csv");
+
+    // printf("===== Parameter TS tests =====\n");
+    // benchTuning<unsigned int, 4, 4, 256*1>(sizes, gpu_runs, "data/TS-4-4-256.csv");
+    // benchTuning<unsigned int, 4, 4, 256*2>(sizes, gpu_runs, "data/TS-4-4-512.csv");
+    // benchTuning<unsigned int, 4, 4, 256*3>(sizes, gpu_runs, "data/TS-4-4-768.csv");
+    // benchTuning<unsigned int, 4, 4, 256*4>(sizes, gpu_runs, "data/TS-4-4-1024.csv");
 
 
     printf("\nUnsigned int:\n");
-    bench<unsigned int, 8, 4, 512>(sizes, gpu_runs, "data/u32-8-8-512.csv");
+    bench<unsigned int, 8, 4, 512>(sizes, gpu_runs, "data/u32-8-4-512.csv");
+    bench<unsigned int, 8, 4, 768>(sizes, gpu_runs, "data/u32-8-4-768.csv");
 
     // printf("\nUnsigned long:\n");
     // bench<unsigned long>(sizes);
