@@ -89,8 +89,8 @@ rankKernel(T* d_in, T* d_out, size_t N, unsigned int* d_histogram, int digit, in
             if (index < local_tile_size) {
                 T val = elements[j];
                 T bit = ((val >> (digit*B+i)) & 0x1);
-                ps0 += (bit == 0 ? 1 : 0);
-                ps1 += (bit == 1 ? 1 : 0);
+                ps0 += bit ^ 0x1;
+                ps1 += bit;
             }
         }
         __syncthreads();
@@ -116,8 +116,8 @@ rankKernel(T* d_in, T* d_out, size_t N, unsigned int* d_histogram, int digit, in
                 T val = elements[j];
                 T bit = ((val >> (digit*B+i)) & 0x1);
                 unsigned int old = (bit == 0 ? ps0 : ps1);
-                ps0 += (bit == 0 ? 1 : 0);
-                ps1 += (bit == 1 ? 1 : 0);
+                ps0 += bit ^ 0x1;
+                ps1 += bit;
                 s_tile[old] = val;
             }
         }

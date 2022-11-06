@@ -260,18 +260,18 @@ int main(int argc, char* argv[]) {
     int gpu_runs = atoi(argv[1]);
 
     std::vector<size_t> sizes;
-    sizes.push_back(100000);
-    sizes.push_back(250000);
-    sizes.push_back(500000);
-    sizes.push_back(750000);
-    sizes.push_back(1000000);
-    sizes.push_back(2500000);
-    sizes.push_back(5000000);
-    sizes.push_back(7500000);
-    sizes.push_back(10000000);
-    sizes.push_back(25000000);
-    sizes.push_back(50000000);
-    sizes.push_back(75000000);
+    // sizes.push_back(100000);
+    // sizes.push_back(250000);
+    // sizes.push_back(500000);
+    // sizes.push_back(750000);
+    // sizes.push_back(1000000);
+    // sizes.push_back(2500000);
+    // sizes.push_back(5000000);
+    // sizes.push_back(7500000);
+    // sizes.push_back(10000000);
+    // sizes.push_back(25000000);
+    // sizes.push_back(50000000);
+    // sizes.push_back(75000000);
     sizes.push_back(100000000);
     sizes.push_back(250000000);
     sizes.push_back(500000000);
@@ -297,7 +297,7 @@ int main(int argc, char* argv[]) {
 
     printf("\nUnsigned int:\n");
     bench<unsigned int, 8, 4, 512>(sizes, gpu_runs, "data/u32-8-4-512.csv");
-    bench<unsigned int, 8, 4, 768>(sizes, gpu_runs, "data/u32-8-4-768.csv");
+    bench<unsigned int, 8, 8, 512>(sizes, gpu_runs, "data/u32-8-8-512.csv");
 
     // printf("\nUnsigned long:\n");
     // bench<unsigned long>(sizes);
