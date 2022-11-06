@@ -114,8 +114,10 @@ void bench(std::vector<size_t> sizes, int gpu_runs, const char* out_file) {
             cudaDeviceSynchronize();
             t1.Stop();
 
+            #ifdef RADIX_VALIDATE
             // Save sorted array to host for validation
             cudaMemcpy(h_out_our, d_in, arr_size, cudaMemcpyDeviceToHost);
+            #endif
 
             // Now the CUB version
             cudaMemcpy(d_in, h_in, arr_size, cudaMemcpyHostToDevice);
@@ -125,12 +127,14 @@ void bench(std::vector<size_t> sizes, int gpu_runs, const char* out_file) {
             cudaDeviceSynchronize();
             t2.Stop();
 
-            cudaMemcpy(h_out_cub, d_out, arr_size, cudaMemcpyDeviceToHost);
 
+            #ifdef RADIX_VALIDATE
+            cudaMemcpy(h_out_cub, d_out, arr_size, cudaMemcpyDeviceToHost);
             // Print if we do not validate
-            // if (!validate<T>(h_out_our, h_out_cub, N)) {
-            //     printf("INVALID. Size %i run %i\n", N, j);
-            // }
+            if (!validate<T>(h_out_our, h_out_cub, N)) {
+                printf("INVALID. Size %i run %i\n", N, j);
+            }
+            #endif
 
             // Save runtimes
             time_our.push_back(t1);
@@ -178,19 +182,32 @@ int main(int argc, char* argv[]) {
     int gpu_runs = atoi(argv[1]);
 
     std::vector<size_t> sizes;
-    sizes.push_back(100000);
-    sizes.push_back(500000);
-    sizes.push_back(1000000);
-    sizes.push_back(5000000);
-    sizes.push_back(10000000);
-    sizes.push_back(50000000);
-    sizes.push_back(100000000);
-    sizes.push_back(500000000);
-    sizes.push_back(1000000000);
+    size_t count = 10000000;
+    for (int i = 0; i < 100; i++) {
+        sizes.push_back(count);
+        count += 10000000;
+    }
+    // sizes.push_back(100000);
+    // sizes.push_back(250000);
+    // sizes.push_back(500000);
+    // sizes.push_back(750000);
+    // sizes.push_back(1000000);
+    // sizes.push_back(2500000);
+    // sizes.push_back(5000000);
+    // sizes.push_back(7500000);
+    // sizes.push_back(10000000);
+    // sizes.push_back(25000000);
+    // sizes.push_back(50000000);
+    // sizes.push_back(75000000);
+    // sizes.push_back(100000000);
+    // sizes.push_back(250000000);
+    // sizes.push_back(500000000);
+    // sizes.push_back(750000000);
+    // sizes.push_back(1000000000);
 
 
     printf("\nUnsigned int:\n");
-    bench<unsigned int, 4, 4, 256>(sizes, gpu_runs, "data/u32-8-8-512.csv");
+    bench<unsigned int, 8, 4, 512>(sizes, gpu_runs, "data/u32-8-8-512.csv");
 
     // printf("\nUnsigned long:\n");
     // bench<unsigned long>(sizes);
@@ -199,7 +216,7 @@ int main(int argc, char* argv[]) {
     // bench<unsigned short>(sizes);
     
     // printf("\nUnsigned char:\n");
-    // bench<unsigned char, 8, 8, 512>(sizes, gpu_runs, "data/u8-8-8-512.csv");
+    // bench<unsigned char, 8, 4, 512>(sizes, gpu_runs, "data/u8-8-8-512.csv");
 
 
     return 0;
