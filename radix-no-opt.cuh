@@ -180,8 +180,6 @@ globalScatterKernel(T* d_in, T* d_out, size_t N, unsigned int* d_histogram, unsi
     if (tid < HISTOGRAM_ELEMENTS) {
         s_histogram[tid] = d_histogram[HISTOGRAM_ELEMENTS * blockIdx.x + tid];
     }
-    __syncthreads();
-
     if (tid < HISTOGRAM_ELEMENTS) {
         s_histogram_global_scan[tid] = d_histogram_scan[HISTOGRAM_ELEMENTS * blockIdx.x + tid];
     }
