@@ -260,53 +260,51 @@ int main(int argc, char* argv[]) {
     int gpu_runs = atoi(argv[1]);
 
     std::vector<size_t> sizes;
-    // sizes.push_back(100000);
-    // sizes.push_back(250000);
-    // sizes.push_back(500000);
-    // sizes.push_back(750000);
-    // sizes.push_back(1000000);
-    // sizes.push_back(2500000);
-    // sizes.push_back(5000000);
-    // sizes.push_back(7500000);
-    // sizes.push_back(10000000);
-    // sizes.push_back(25000000);
-    // sizes.push_back(50000000);
-    // sizes.push_back(75000000);
+    sizes.push_back(100000);
+    sizes.push_back(250000);
+    sizes.push_back(500000);
+    sizes.push_back(750000);
+    sizes.push_back(1000000);
+    sizes.push_back(2500000);
+    sizes.push_back(5000000);
+    sizes.push_back(7500000);
+    sizes.push_back(10000000);
+    sizes.push_back(25000000);
+    sizes.push_back(50000000);
+    sizes.push_back(75000000);
     sizes.push_back(100000000);
     sizes.push_back(250000000);
     sizes.push_back(500000000);
     sizes.push_back(750000000);
-    sizes.push_back(1000000000);
 
-    // printf("===== Parameter B tests =====\n");
-    // benchTuning<unsigned int, 1, 4, 256>(sizes, gpu_runs, "data/B-1-4-256.csv");
-    // benchTuning<unsigned int, 4, 4, 256>(sizes, gpu_runs, "data/B-4-4-256.csv");
-    // benchTuning<unsigned int, 8, 4, 256>(sizes, gpu_runs, "data/B-8-4-256.csv");
+    printf("===== Parameter B tests =====\n");
+    benchTuning<unsigned int, 1, 4, 256>(sizes, gpu_runs, "data/B-1-4-256.csv");
+    benchTuning<unsigned int, 4, 4, 256>(sizes, gpu_runs, "data/B-4-4-256.csv");
+    benchTuning<unsigned int, 8, 4, 256>(sizes, gpu_runs, "data/B-8-4-256.csv");
 
-    // printf("===== Parameter E tests =====\n");
-    // benchTuning<unsigned int, 4, 1, 256>(sizes, gpu_runs, "data/E-4-1-256.csv");
-    // benchTuning<unsigned int, 4, 4, 256>(sizes, gpu_runs, "data/E-4-4-256.csv");
-    // benchTuning<unsigned int, 4, 8, 256>(sizes, gpu_runs, "data/E-4-8-256.csv");
+    printf("===== Parameter E tests =====\n");
+    benchTuning<unsigned int, 4, 1, 256>(sizes, gpu_runs, "data/E-4-1-256.csv");
+    benchTuning<unsigned int, 4, 4, 256>(sizes, gpu_runs, "data/E-4-4-256.csv");
+    benchTuning<unsigned int, 4, 8, 256>(sizes, gpu_runs, "data/E-4-8-256.csv");
 
-    // printf("===== Parameter TS tests =====\n");
-    // benchTuning<unsigned int, 4, 4, 256*1>(sizes, gpu_runs, "data/TS-4-4-256.csv");
-    // benchTuning<unsigned int, 4, 4, 256*2>(sizes, gpu_runs, "data/TS-4-4-512.csv");
-    // benchTuning<unsigned int, 4, 4, 256*3>(sizes, gpu_runs, "data/TS-4-4-768.csv");
-    // benchTuning<unsigned int, 4, 4, 256*4>(sizes, gpu_runs, "data/TS-4-4-1024.csv");
+    printf("===== Parameter TS tests =====\n");
+    benchTuning<unsigned int, 4, 4, 256*1>(sizes, gpu_runs, "data/TS-4-4-256.csv");
+    benchTuning<unsigned int, 4, 4, 256*2>(sizes, gpu_runs, "data/TS-4-4-512.csv");
+    benchTuning<unsigned int, 4, 4, 256*3>(sizes, gpu_runs, "data/TS-4-4-768.csv");
+    benchTuning<unsigned int, 4, 4, 256*4>(sizes, gpu_runs, "data/TS-4-4-1024.csv");
 
 
     printf("\nUnsigned int:\n");
     bench<unsigned int, 8, 4, 512>(sizes, gpu_runs, "data/u32-8-4-512.csv");
-    bench<unsigned int, 8, 8, 512>(sizes, gpu_runs, "data/u32-8-8-512.csv");
 
-    // printf("\nUnsigned long:\n");
-    // bench<unsigned long>(sizes);
+    printf("\nUnsigned long:\n");
+    bench<unsigned long, 8, 4, 512>(sizes, gpu_runs, "data/u64-8-4-512.csv");
 
-    // printf("\nUnsigned short:\n");
-    // bench<unsigned short>(sizes);
+    printf("\nUnsigned short:\n");
+    bench<unsigned short, 8, 4, 512>(sizes, gpu_runs, "data/u16-8-4-512.csv");
     
-    // printf("\nUnsigned char:\n");
-    // bench<unsigned char, 8, 4, 512>(sizes, gpu_runs, "data/u8-8-8-512.csv");
+    printf("\nUnsigned char:\n");
+    bench<unsigned char, 8, 4, 512>(sizes, gpu_runs, "data/u8-8-4-512.csv");
 
 
     return 0;
