@@ -1,7 +1,6 @@
 
 // Include the three versions of radix we want to test
-// #include "./radix.cuh"
-#include"./radix-no-opt.cuh"
+#include"./radix.cuh"
 #include"./radix-cub.cuh"
 #include"./helper.cu.h"
 // Standard includes
@@ -277,6 +276,7 @@ int main(int argc, char* argv[]) {
     sizes.push_back(500000000);
     sizes.push_back(750000000);
 
+    #ifndef RADIX_VALIDATE 
     printf("===== Parameter B tests =====\n");
     benchTuning<unsigned int, 1, 4, 256>(sizes, gpu_runs, "data/B-1-4-256.csv");
     benchTuning<unsigned int, 4, 4, 256>(sizes, gpu_runs, "data/B-4-4-256.csv");
@@ -292,7 +292,7 @@ int main(int argc, char* argv[]) {
     benchTuning<unsigned int, 4, 4, 256*2>(sizes, gpu_runs, "data/TS-4-4-512.csv");
     benchTuning<unsigned int, 4, 4, 256*3>(sizes, gpu_runs, "data/TS-4-4-768.csv");
     benchTuning<unsigned int, 4, 4, 256*4>(sizes, gpu_runs, "data/TS-4-4-1024.csv");
-
+    #endif
 
     printf("\nUnsigned int:\n");
     bench<unsigned int, 8, 4, 512>(sizes, gpu_runs, "data/u32-8-4-512.csv");
