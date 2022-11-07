@@ -1,22 +1,20 @@
-CUB=cub-1.8.0
 
-LINKS= -lcuda -lcudart -lnvrtc
+all: radix radix-validate
 
-all: cub-sort radix
+dirs:
+	mkdir -p bin
+	kmdir -p data
 
-cub-sort: sorting_test.cu helper.cu.h
-	nvcc -I$(CUB)/cub -o test-cub sorting_test.cu
-	./test-cub 100000000
-
-radix: main.cu
+radix: dirs main.cu
 	nvcc main.cu -o bin/radix
 
-radix-validate: main.cu
+radix-validate: dirs main.cu
 	nvcc main.cu -DRADIX_VALIDATE -o bin/radix-validate
 
 fut-bench: radix-fut.fut
 	futhark bench --backend=cuda radix-fut.fut
 
 clean:
-	rm -f test-cub radix
+	rm -f bin/radix
+	rm -f bin/radix-validate
 

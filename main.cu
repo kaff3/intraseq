@@ -273,8 +273,8 @@ int main(int argc, char* argv[]) {
     sizes.push_back(75000000);
     sizes.push_back(100000000);
     sizes.push_back(250000000);
-    sizes.push_back(500000000);
-    sizes.push_back(750000000);
+    sizes.push_back(500000000);     // Does not work on gpu04
+    sizes.push_back(750000000);     // Does not work on gpu04
 
     #ifndef RADIX_VALIDATE 
     printf("===== Parameter B tests =====\n");
@@ -285,7 +285,7 @@ int main(int argc, char* argv[]) {
     printf("===== Parameter E tests =====\n");
     benchTuning<unsigned int, 4, 1, 256>(sizes, gpu_runs, "data/E-4-1-256.csv");
     benchTuning<unsigned int, 4, 4, 256>(sizes, gpu_runs, "data/E-4-4-256.csv");
-    benchTuning<unsigned int, 4, 8, 256>(sizes, gpu_runs, "data/E-4-8-256.csv");
+    benchTuning<unsigned int, 4, 8, 256>(sizes, gpu_runs, "data/E-4-8-256.csv");    
 
     printf("===== Parameter TS tests =====\n");
     benchTuning<unsigned int, 4, 4, 256*1>(sizes, gpu_runs, "data/TS-4-4-256.csv");
