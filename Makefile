@@ -3,7 +3,7 @@ all: radix radix-validate
 
 dirs:
 	mkdir -p bin
-	kmdir -p data
+	mkdir -p data
 
 radix: dirs main.cu
 	nvcc main.cu -o bin/radix
