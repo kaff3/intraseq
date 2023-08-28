@@ -20,7 +20,7 @@ template<
     size_t BLOCK_SIZE
 >
 __global__
-void block_reduce(T* d_in, T* d_tmp, size_t N) {
+void block_reduce(T* d_in, T* d_out, size_t N) {
     // TODO: handle block size not multiple of 2 by padding
 
     size_t gid = blockIdx.x * blockDim.x + threadIdx.x;
@@ -43,7 +43,7 @@ void block_reduce(T* d_in, T* d_tmp, size_t N) {
     }
 
     // write block result
-    d_tmp[blockIdx.x] = sh_mem[0];
+    d_out[blockIdx.x] = sh_mem[0];
 }
 
 
