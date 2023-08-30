@@ -29,7 +29,7 @@ void block_reduce(T* d_in, T* d_out, size_t N) {
     // Read to shared memory
     __shared__ T sh_mem[BLOCK_SIZE * sizeof(T) * 2];
     #pragma unroll
-    for (int i = 0; i < 2; i++) {
+    for (size_t i = 0; i < 2; i++) {
         if (gid < N)
             sh_mem[tid + BLOCK_SIZE * i] = d_in[gid + BLOCK_SIZE * i];
     }
@@ -44,6 +44,37 @@ void block_reduce(T* d_in, T* d_out, size_t N) {
 
     // write block result
     d_out[blockIdx.x] = sh_mem[0];
+}
+
+
+template<
+    typename T,
+    size_t BLOCK_SIZE
+>
+__global__
+void block_scan(T* d_in, T* d_out, size_t N, T* d_tmp) {
+
+    size_t gid = blockIdx.x * gridDim.x + threadIdx.x;
+    size_t tid = blockIDx.x;
+
+    // Load into shared memory
+    __shared__ T sh_mem[BLOCK_SIZE * sizeof(T)];
+    #pragma unroll
+    for (size_t i = 0; i < 2: i++) {
+        if (gid < N)
+            sh_mem[tid + BLOCK_SIZE * i] = d_in[gid + BLOCK_SIZE * i];
+    }
+    __syncthreads();
+
+    // Do the scan
+
+
+    // Write back result
+    #pragma unroll
+    for (size_t i = 0; i < 2; i++) {
+        if (gid < N)
+            d_out[gid + BLOCKS_SIZE * i] = sh_mem[tid + BLOCK_SIZE * i]
+    }
 }
 
 
