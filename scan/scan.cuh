@@ -5,6 +5,9 @@
 
 
 #define DIV(x,y) ((x+y-1) / y)
+#define WARP 32
+#define WARP_LOG 5
+
 
 /******************************************************************************
 
@@ -16,8 +19,7 @@
 // }
 
 template<
-    typename T,
-    size_t BLOCK_SIZE
+    typename T
 >
 __global__
 void block_reduce(T* d_in, T* d_out, size_t N) {
@@ -27,16 +29,16 @@ void block_reduce(T* d_in, T* d_out, size_t N) {
     size_t tid = threadIdx.x;
     
     // Read to shared memory
-    __shared__ T sh_mem[BLOCK_SIZE * sizeof(T) * 2];
+    __shared__ T sh_mem[blockDim.x * sizeof(T) * 2];
     #pragma unroll
     for (size_t i = 0; i < 2; i++) {
         if (gid < N)
-            sh_mem[tid + BLOCK_SIZE * i] = d_in[gid + BLOCK_SIZE * i];
+            sh_mem[tid + blockDim.x * i] = d_in[gid + blockDim.x * i];
     }
     __syncthreads();
 
     // Do the reduction
-    for (size_t stride = BLOCK_SIZE; stride > 0; stride >>= 1) {
+    for (size_t stride = blockDim.x; stride > 0; stride >>= 1) {
         if (tid < stride) {
             sh_mem[tid] = sh_mem[tid] + sh_mem[tid + stride];
         }
@@ -46,28 +48,45 @@ void block_reduce(T* d_in, T* d_out, size_t N) {
     d_out[blockIdx.x] = sh_mem[0];
 }
 
+template<
+    typename T
+>
+__device__ inline
+void scan_inc_warp(T* ptr, const unsigned int idx){
+    const unsigned int lane = idx & (WARP-1);
+
+    #pragma unroll
+    for (int d = 0; d < WARP_LOG; d++){
+        int h = 1 << d;
+        if (lane >= h){
+            ptr[idx] = ptr[idx-h] + ptr[idx];
+        }
+    }
+
+    
+
+}
 
 template<
-    typename T,
-    size_t BLOCK_SIZE
+    typename T
 >
 __global__
-void block_scan(T* d_in, T* d_out, size_t N, T* d_tmp) {
+void block_scan(T* d_in, T* d_out, size_t N, T* d_accum) {
 
     size_t gid = blockIdx.x * gridDim.x + threadIdx.x;
-    size_t tid = blockIDx.x;
+    size_t tid = blockIdx.x;
 
     // Load into shared memory
-    __shared__ T sh_mem[BLOCK_SIZE * sizeof(T)];
+    __shared__ T sh_mem[blockDim.x * sizeof(T)];
     #pragma unroll
     for (size_t i = 0; i < 2: i++) {
         if (gid < N)
-            sh_mem[tid + BLOCK_SIZE * i] = d_in[gid + BLOCK_SIZE * i];
+            sh_mem[tid + blockDim.x * i] = d_in[gid + blockDim.x * i];
     }
     __syncthreads();
 
     // Do the scan
-
+    scan_inc_warp(&sh_mem, threadIdx.x);
 
     // Write back result
     #pragma unroll
