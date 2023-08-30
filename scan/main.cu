@@ -35,6 +35,9 @@ void testReduce() {
 
     cudaDeviceSynchronize();
     printf("Reduced: %x\n", sum);
+
+    cudaFree((void*)d_in);
+    cudaFree((void*)d_out);
 }
 
 int main(int argc, char* argv[]) {
