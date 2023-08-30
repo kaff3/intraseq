@@ -30,7 +30,7 @@ void block_reduce(T* d_in, T* d_out, size_t N) {
     __shared__ T sh_mem[BLOCK_SIZE * sizeof(T) * 2];
     #pragma unroll
     for (int i = 0; i < 2; i++) {
-        if (gIdx < N)
+        if (gid < N)
             sh_mem[tid + BLOCK_SIZE * i] = d_in[gid + BLOCK_SIZE * i];
     }
     __syncthreads();
@@ -51,21 +51,25 @@ void block_reduce(T* d_in, T* d_out, size_t N) {
 This is the function to call from the CPU side to do the scan. It will call the
 kernel on the correct input
 ******************************************************************************/
-template<
-    typename T,     // The type of the array
-    size_t B,       // The number of elements pr block
-    size_t BLOCK_SIZE
->
-void scan_naive(T* d_in, T* d_out, T* d_tmp, size_t N) {
+// template<
+//     typename T,     // The type of the array
+//     size_t B,       // The number of elements pr block
+//     size_t BLOCK_SIZE
+// >
+// void scan_naive(T* d_in, T* d_out, T* d_tmp, size_t N) {
 
-    // Compute number of blocks needed for reduce
-    size_t outer_num_blocks = DIV(N, BLOCK_SIZE);
-    reduce_kernel<<<outer_num_blocks, BLOCK_SIZE>>>();
+//     // Compute number of blocks needed for reduce
+//     size_t outer_num_blocks = DIV(N, BLOCK_SIZE);
+//     reduce_kernel<<<outer_num_blocks, BLOCK_SIZE>>>();
 
-    size_t inner_num_blocks = DIV(outer_num_blocks, BLOCK_SIZE);
-    scan_kernel<<<inner_num_blocks, BLOCK_SIZE>>>();
+//     size_t inner_num_blocks = DIV(outer_num_blocks, BLOCK_SIZE);
+//     scan_kernel<<<inner_num_blocks, BLOCK_SIZE>>>();
     
-    scan_kernel<<<outer_num_blocks, BLOCK_SIZE>>>();
+//     scan_kernel<<<outer_num_blocks, BLOCK_SIZE>>>();
+
+// }
+
+
 
     // // Allocate device memory
     // // TODO: Can probably be more elegant
@@ -96,7 +100,6 @@ void scan_naive(T* d_in, T* d_out, T* d_tmp, size_t N) {
     // // Add values to scanned array
 
 
-}
 
 
 

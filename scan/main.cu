@@ -15,14 +15,22 @@ void testReduce() {
     
     int* d_in;
     int* d_out;
-    cudaMalloc((void**)&d_in, REDUCE_TEST_SIZE);
-    cudaMalloc((void**)&d_out, num_blocks);
+    cudaMalloc((void**)&d_in, REDUCE_TEST_SIZE * sizeof(int));
+    cudaMalloc((void**)&d_out, num_blocks * sizeof(int));
 
+    printf("Copying to device\n");
+    cudaMemcpy(d_in, (void*)&foo, REDUCE_TEST_SIZE * sizeof(int), cudaMemcpyHostToDevice);
+
+    printf("Running kernel\n");
     block_reduce<int, REDUCE_TEST_BLOCK_SIZE><<<num_blocks, REDUCE_TEST_BLOCK_SIZE>>>(d_in, d_out, REDUCE_TEST_SIZE);
 
+    printf("Copying to host\n");
+    cudaMemcpy((void*)&foo, d_out, REDUCE_TEST_SIZE * sizeof(int), cudaMemcpyDeviceToHost);
+
+    printf("Running loop \n");
     int sum = 0;
     for (int i = 0; i < num_blocks; i++) {
-        sum += d_out[i];
+        sum += foo[i];
     }
 
     cudaDeviceSynchronize();
