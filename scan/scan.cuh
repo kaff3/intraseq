@@ -67,43 +67,10 @@ T scan_inc_block(volatile T* ptr, const unsigned int idx){
 
     // Accumulate across warps
     if (warpid > 0) res = res + ptr[warpid-1];
-    
-    return res;
-}
-
-
-/**
- * Reduces a given array, producing a reduced value pr. block placed in d_out
- * d_in: Pointer to the data to be reduced. Has length N
- * d_out: Pointer to where the pr. block reduced values should be stored
- *        Has length gridDim.x
- * n: The number of elements in d_in;
-*/
-template<
-    typename T
->
-__global__
-void reduce_kernel(T* d_in, T* d_out, size_t N) {
-    // TODO: handle block size not multiple of 2 by padding
-
-    // Will have size blockDim.x * sizeof(T)
-    extern volatile __shared__ T sh_mem[];
-
-    size_t gid = blockIdx.x * blockDim.x + threadIdx.x;
-    size_t tid = threadIdx.x;
-    
-    // Load into shared mem
-    if (tid < N) sh_mem[tid] = d_in[gid];
     __syncthreads();
 
-    // Do a scan. Will only need the value in the last thread
-    T res = scan_inc_block(sh_mem, tid);
-
-    // Last thread write out the reduced value
-    if (tid == (blockDim.x - 1))
-        d_out[blockIdx.x] = res;
+    return res;
 }
-
 
 template<typename T>
 __global__
@@ -128,7 +95,6 @@ void scan_kernel(T* d_in, size_t N, size_t iter) {
     if (gid < N)
         d_in[gid] = sh_mem[tid];
 }
-
 
 
 template<typename T>
