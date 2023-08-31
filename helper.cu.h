@@ -32,18 +32,18 @@ int timeval_subtract(struct timeval *result, struct timeval *t2, struct timeval 
 
 #define cudaSucceeded(ans) { cudaAssert((ans), __FILE__, __LINE__); }
 
-inline void cudaAssert(cudaError_t code, const char *file, int line, bool abort=true)
-{
-  if (code != cudaSuccess) {
-    std::cerr << "cudaAssert failed: "
-              << cudaGetErrorString(code)
-              << file << ":" << line
-              << std::endl;
-    if (abort) {
-      exit(code);
-    }
-  }
-}
+// inline void cudaAssert(cudaError_t code, const char *file, int line, bool abort=true)
+// {
+//   if (code != cudaSuccess) {
+//     std::cerr << "cudaAssert failed: "
+//               << cudaGetErrorString(code)
+//               << file << ":" << line
+//               << std::endl;
+//     if (abort) {
+//       exit(code);
+//     }
+//   }
+// }
 
 inline uint32_t ceilLog2(uint32_t H) {
     if (H == 0) { printf("Log2(0) is illegal. Exiting!\n"); exit(1); }
