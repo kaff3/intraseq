@@ -6,7 +6,7 @@
 #include<algorithm>
 #include<iterator>
 
-#define TEST_SIZE (1024 * 1)
+#define TEST_SIZE (1024 * 100)
 #define BLOCK_SIZE 1024
 
 template<typename T>
@@ -16,7 +16,6 @@ void intraBlockScanBench() {
     // Create the array to be scanned
     T* arr1 = (T*)malloc(TEST_SIZE*sizeof(T));
     T* arr2 = (T*)malloc(TEST_SIZE*sizeof(T));
-    // std::fill(std::begin(arr1), std::end(arr1), 1);
     for (size_t i = 0; i < TEST_SIZE; i++) {
         arr1[i] = 1;
     }
@@ -31,14 +30,14 @@ void intraBlockScanBench() {
     cudaMemcpy(d_in2, (void*)arr1, TEST_SIZE*sizeof(T), cudaMemcpyHostToDevice);
 
     // Dry run
-    // scan_kernel<T><<<num_blocks, BLOCK_SIZE>>>(d_in1, TEST_SIZE, 1000);
-    // cudaDeviceSynchronize();
-    // cudaMemcpy(d_in1, (void*)&arr1, TEST_SIZE*sizeof(T), cudaMemcpyHostToDevice);
+    //scan_kernel<T><<<num_blocks, BLOCK_SIZE>>>(d_in1, TEST_SIZE, 100);
+    //cudaDeviceSynchronize();
+    //cudaMemcpy(d_in1, (void*)&arr1, TEST_SIZE*sizeof(T), cudaMemcpyHostToDevice);
 
-    // Benchamrking
-    Timer t1, t2;
+    // Benchmarking
+    Timer t1, t2, t3;
     
-    const size_t iterations = 1;
+    const size_t iterations = 10000;
 
     t1.Start();
     scan_kernel<T><<<num_blocks, BLOCK_SIZE>>>(d_in1, TEST_SIZE, iterations);
@@ -50,25 +49,31 @@ void intraBlockScanBench() {
     cudaDeviceSynchronize();
     t2.Stop();
 
+    //t3.Start();
+    //scan_kernel_seq_reg<T><<<num_blocks, BLOCK_SIZE/4>>>(d_in2, TEST_SIZE, iterations);
+    //cudaDeviceSynchronize();
+    //t3.Stop();
+
     printf("nor = %.2f\n", t1.Get());
     printf("seq = %.2f\n", t2.Get());
+    //printf("seqReg = %.2f\n", t3.Get());
 
     cudaMemcpy((void*)arr1, d_in1, TEST_SIZE*sizeof(T), cudaMemcpyDeviceToHost);
     cudaMemcpy((void*)arr2, d_in2, TEST_SIZE*sizeof(T), cudaMemcpyDeviceToHost);
 
     printf("loop starting\n");
-    bool succes = true;
+    bool success = true;
     for (size_t i = 0; i < TEST_SIZE; i++) {
        if (arr1[i] != arr2[i]) {
-           succes = false;
-           printf("oh no at i=%i\n", i);
            printf("Arr1: %u\n", arr1[i]);
            printf("Arr2: %u\n", arr2[i]);
+           success = false;
+           printf("oh no at i=%i\n", i);
            break;
        }
     }
 
-    printf("succes = %i\n", succes);
+    printf("success = %i\n", success);
 
     cudaFree(d_in1);
     cudaFree(d_in2);

@@ -50,16 +50,9 @@ T scan_inc_block(volatile T* ptr, const unsigned int idx){
     T res = scan_inc_warp(ptr, idx);
     __syncthreads();
     
-    T tmp;
-    if (lane == (WARP - 1)) tmp = ptr[idx];
-    __syncthreads();
-
-    if (lane == (WARP - 1)) ptr[idx] = tmp;
-    __syncthreads();
-    
     // Copy last element of each warp to first warp
-    // if (lane == (WARP - 1)) ptr[warpid] = res;
-    // __syncthreads();
+    if (lane == (WARP - 1)) ptr[warpid] = res;
+    __syncthreads();
 
     // First warp perform scan
     if (warpid == 0) scan_inc_warp(ptr, idx);
@@ -75,7 +68,6 @@ T scan_inc_block(volatile T* ptr, const unsigned int idx){
 template<typename T>
 __global__
 void scan_kernel(T* d_in, size_t N, size_t iter) {
-
     unsigned int gid = blockIdx.x * blockDim.x + threadIdx.x;
     unsigned int tid = threadIdx.x;
 
@@ -100,8 +92,6 @@ void scan_kernel(T* d_in, size_t N, size_t iter) {
 template<typename T>
 __global__
 void scan_kernel_seq(T* d_in, size_t N, size_t iter) {
-
-    unsigned int gid = blockIdx.x * blockDim.x + threadIdx.x;
     unsigned int tid = threadIdx.x;
 
     const size_t num_elems = MAX_THREADS_BLOCK / BLOCKDIM_X2;
@@ -118,7 +108,6 @@ void scan_kernel_seq(T* d_in, size_t N, size_t iter) {
             sh_mem[s_index] = d_in[d_index];
     }
 
-    
     // Perform iter scans
     for (size_t i = 0; i < iter; i++) {
 
@@ -127,8 +116,8 @@ void scan_kernel_seq(T* d_in, size_t N, size_t iter) {
         #pragma unroll
         for (size_t i = 0; i < num_elems; i++) {
             size_t offset = num_elems * tid;
-            sh_mem[offset + i] += accum;
-            accum = sh_mem[i + offset];
+            accum += sh_mem[offset + i];
+            sh_mem[offset + i] = accum;
         }
         sh_tmp[threadIdx.x] = accum;
         __syncthreads();
@@ -158,81 +147,60 @@ void scan_kernel_seq(T* d_in, size_t N, size_t iter) {
 
 }
     
-
-
-
-
-
-/**
- * This function orchastrates the the calls and synchronization between
- * kernels needed to perform a scan. 
-*/
 template<typename T>
-void scan() {
-    // TODO:
-    /**
-     * Should the function just take host ararys as arguments and then copy
-     * them to device or should it take device arrays?
-    */
+__global__
+void scan_kernel_seq_reg(T* d_in, size_t N, size_t iter) {
+    unsigned int tid = threadIdx.x;
+
+    const size_t num_elems = MAX_THREADS_BLOCK / BLOCKDIM_X2;
+
+    volatile __shared__ T sh_mem[BLOCKDIM_X2 * sizeof(T) * num_elems];
+    volatile __shared__ T sh_tmp[BLOCKDIM_X2 * sizeof(T)];
+
+    // Load into shared memory
+    #pragma unroll
+    for (size_t i = 0; i < num_elems; i++) {
+        size_t s_index = threadIdx.x + i * blockDim.x;
+        size_t d_index = blockIdx.x * MAX_THREADS_BLOCK + s_index;
+        if (d_index < N)
+            sh_mem[s_index] = d_in[d_index];
+    }
+
+    // Perform iter scans
+    for (size_t i = 0; i < iter; i++) {
+
+        // Do element wise scans
+        T accum = 0;
+        #pragma unroll
+        for (size_t i = 0; i < num_elems; i++) {
+            size_t offset = num_elems * tid;
+            accum += sh_mem[offset + i];
+            sh_mem[offset + i] = accum;
+        }
+        sh_tmp[threadIdx.x] = accum;
+        __syncthreads();
+        
+        sh_tmp[tid] = scan_inc_block<T>(sh_tmp, tid);
+        __syncthreads();
+        
+        if (tid > 0) {
+            T accum = sh_tmp[tid-1];
+            
+            for (size_t i = 0; i < num_elems; i++) {
+                size_t offset = num_elems * tid;
+                sh_mem[offset + i] += accum;
+            }
+        }
+        __syncthreads();
+    }
+
+    // Store in global memory
+    #pragma unroll
+    for (size_t i = 0; i < num_elems; i++) {
+        size_t s_index = threadIdx.x + i * blockDim.x;
+        size_t d_index = blockIdx.x * MAX_THREADS_BLOCK + s_index;
+        if (d_index < N)
+            d_in[d_index] =  sh_mem[s_index];
+    }
+
 }
-
-
-
-
-
-
-
-
-
-/******************************************************************************
-This is the function to call from the CPU side to do the scan. It will call the
-kernel on the correct input
-******************************************************************************/
-// template<
-//     typename T,     // The type of the array
-//     size_t B,       // The number of elements pr block
-//     size_t BLOCK_SIZE
-// >
-// void scan_naive(T* d_in, T* d_out, T* d_tmp, size_t N) {
-
-//     // Compute number of blocks needed for reduce
-//     size_t outer_num_blocks = DIV(N, BLOCK_SIZE);
-//     reduce_kernel<<<outer_num_blocks, BLOCK_SIZE>>>();
-
-//     size_t inner_num_blocks = DIV(outer_num_blocks, BLOCK_SIZE);
-//     scan_kernel<<<inner_num_blocks, BLOCK_SIZE>>>();
-    
-//     scan_kernel<<<outer_num_blocks, BLOCK_SIZE>>>();
-
-// }
-
-
-
-    // // Allocate device memory
-    // // TODO: Can probably be more elegant
-    // size_t mem;
-    // if ((N % B) == 0)
-    //     mem = N * sizeof(T);
-    // else
-    //     mem = (N - (N % B) + B) * sizeof(T)
-
-    // T* d_in = cudaMalloc(mem);
-    // T* d_out = cudaMalloc(mem);
-    // // TODO: Copy to device
-
-    // // Compute the number of blocks and threads needed 
-    // size_t num_blocks = DIV(N, B);
-    // size_t num_threads = DIV(B, 2);
-
-    // // Additional memory for intermediate sizes
-    // T* d_tmp1 = cudaMalloc(num_blocks * sizeof(T));
-    // T* d_tmp2 = cudaMalloc(num_blocks * sizeof(T));
-
-    // // Invoke kernel
-    // scan_naive_kernel_block<<<num_threads, num_blocks>>>(d_in, d_out, d_tmp1);
-
-    // // Scan the tmp array
-    // scan_naive_kernel_block<<<?, ?>>>(d_tmp1, d_tmp2, NULL);
-
-    // // Add values to scanned array
-
