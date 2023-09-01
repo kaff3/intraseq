@@ -1,7 +1,7 @@
 #include<stdio.h>
 #include<stdlib.h>
 #include"./scan.cuh"
-#include"../timing.h"
+#include"../shared/timing.h"
 #include<cuda_runtime.h>
 #include<algorithm>
 #include<iterator>

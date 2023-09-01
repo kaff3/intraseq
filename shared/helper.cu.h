@@ -2,6 +2,7 @@
 #define HISTO_HELPER
 
 #include <assert.h>
+#include <cstdint>
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
