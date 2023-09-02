@@ -107,6 +107,7 @@ void scan_kernel_seq(T* d_in, size_t N, size_t iter) {
         if (d_index < N)
             sh_mem[s_index] = d_in[d_index];
     }
+    __syncthreads();
 
     // Perform iter scans
     for (size_t i = 0; i < iter; i++) {
@@ -165,17 +166,26 @@ void scan_kernel_seq_reg(T* d_in, size_t N, size_t iter) {
         if (d_index < N)
             sh_mem[s_index] = d_in[d_index];
     }
+    __syncthreads();
+
 
     // Perform iter scans
     for (size_t i = 0; i < iter; i++) {
 
-        // Do element wise scans
+        // Load into registers
+        T reg_arr[num_elems];
+        #pragma unroll
+        for (size_t i = 0; i < num_elems; i++) {
+            reg_arr[i] = sh_mem[tid * num_elems + i];
+        }
+        __syncthreads();
+
+        // Do element wise scans in register
         T accum = 0;
         #pragma unroll
         for (size_t i = 0; i < num_elems; i++) {
-            size_t offset = num_elems * tid;
-            accum += sh_mem[offset + i];
-            sh_mem[offset + i] = accum;
+            accum += reg_arr[i];
+            reg_arr[i] = accum;
         }
         sh_tmp[threadIdx.x] = accum;
         __syncthreads();
@@ -187,12 +197,19 @@ void scan_kernel_seq_reg(T* d_in, size_t N, size_t iter) {
             T accum = sh_tmp[tid-1];
             
             for (size_t i = 0; i < num_elems; i++) {
-                size_t offset = num_elems * tid;
-                sh_mem[offset + i] += accum;
+                reg_arr[i] += accum;
             }
         }
         __syncthreads();
+        
+        // Register to shared mem
+        #pragma unroll
+        for (size_t i = 0; i < num_elems; i++) {
+            sh_mem[tid * num_elems + i] = reg_arr[i];
+        }
+        __syncthreads();
     }
+
 
     // Store in global memory
     #pragma unroll
