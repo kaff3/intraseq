@@ -6,12 +6,18 @@
 #include<algorithm>
 #include<iterator>
 
-#define TEST_SIZE (1024 * 1000)
-#define BLOCK_SIZE 1024
+// #define TEST_SIZE (1024 * 1000)
+// #define BLOCK_SIZE 1024
 
 template<typename T>
-void intraBlockScanBench() {
-    int num_blocks = TEST_SIZE / BLOCK_SIZE;
+void intraBlockScanBench(const unsigned int block_size, 
+                         const unsigned int num_blocks,
+                         const unsigned int num_elems,
+                         const unsigned int iterations) 
+{
+    
+    // compute total number of elements
+    const unsigned int TEST_SIZE = block_size * num_blocks;
 
     // Create the array to be scanned
     T* arr1 = (T*)malloc(TEST_SIZE*sizeof(T));
@@ -34,27 +40,25 @@ void intraBlockScanBench() {
     cudaMemcpy(d_in3, (void*)arr1, TEST_SIZE*sizeof(T), cudaMemcpyHostToDevice);
 
     // Dry run
-    scan_kernel<T><<<num_blocks, BLOCK_SIZE>>>(d_in1, TEST_SIZE, 100);
+    scan_kernel<T><<<num_blocks, block_size>>>(d_in1, TEST_SIZE, 100);
     cudaDeviceSynchronize();
     cudaMemcpy(d_in1, (void*)arr1, TEST_SIZE*sizeof(T), cudaMemcpyHostToDevice);
 
     // Benchmarking
     Timer t1, t2, t3;
-    
-    const size_t iterations = 1000000;
 
     t1.Start();
-    scan_kernel<T><<<num_blocks, BLOCK_SIZE>>>(d_in1, TEST_SIZE, iterations);
+    scan_kernel<T><<<num_blocks, block_size>>>(d_in1, TEST_SIZE, iterations);
     cudaDeviceSynchronize();
     t1.Stop();
 
     t2.Start();
-    scan_kernel_seq<T><<<num_blocks, BLOCK_SIZE/4>>>(d_in2, TEST_SIZE, iterations);
+    scan_kernel_seq<T><<<num_blocks, block_size/num_elems>>>(d_in2, TEST_SIZE, iterations);
     cudaDeviceSynchronize();
     t2.Stop();
 
     t3.Start();
-    scan_kernel_seq_reg<T><<<num_blocks, BLOCK_SIZE/4>>>(d_in3, TEST_SIZE, iterations);
+    scan_kernel_seq_reg<T><<<num_blocks, block_size/num_elems>>>(d_in3, TEST_SIZE, iterations);
     cudaDeviceSynchronize();
     t3.Stop();
 
@@ -92,6 +96,8 @@ void intraBlockScanBench() {
 
 
 int main(int argc, char* argv[]) {
-    intraBlockScanBench<unsigned int>();
+    const size_t iterations = 1000000;
+
+    intraBlockScanBench<unsigned int>(1024, 1000, 4, iterations);
     return 0;
 }
