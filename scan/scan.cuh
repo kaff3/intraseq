@@ -201,7 +201,7 @@ void scan_kernel_seq_reg(T* d_in, size_t N, size_t iter) {
             }
         }
         __syncthreads();
-        
+
         // Register to shared mem
         #pragma unroll
         for (size_t i = 0; i < num_elems; i++) {

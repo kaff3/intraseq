@@ -6,7 +6,7 @@
 #include<algorithm>
 #include<iterator>
 
-#define TEST_SIZE (1024 * 2000)
+#define TEST_SIZE (1024 * 1000)
 #define BLOCK_SIZE 1024
 
 template<typename T>
@@ -34,14 +34,14 @@ void intraBlockScanBench() {
     cudaMemcpy(d_in3, (void*)arr1, TEST_SIZE*sizeof(T), cudaMemcpyHostToDevice);
 
     // Dry run
-    //scan_kernel<T><<<num_blocks, BLOCK_SIZE>>>(d_in1, TEST_SIZE, 100);
-    //cudaDeviceSynchronize();
-    //cudaMemcpy(d_in1, (void*)&arr1, TEST_SIZE*sizeof(T), cudaMemcpyHostToDevice);
+    scan_kernel<T><<<num_blocks, BLOCK_SIZE>>>(d_in1, TEST_SIZE, 100);
+    cudaDeviceSynchronize();
+    cudaMemcpy(d_in1, (void*)arr1, TEST_SIZE*sizeof(T), cudaMemcpyHostToDevice);
 
     // Benchmarking
     Timer t1, t2, t3;
     
-    const size_t iterations = 5000000;
+    const size_t iterations = 1000000;
 
     t1.Start();
     scan_kernel<T><<<num_blocks, BLOCK_SIZE>>>(d_in1, TEST_SIZE, iterations);
