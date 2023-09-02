@@ -5,6 +5,7 @@
 #include<cuda_runtime.h>
 #include<algorithm>
 #include<iterator>
+#include<vector>
 
 // #define TEST_SIZE (1024 * 1000)
 // #define BLOCK_SIZE 1024
@@ -82,6 +83,8 @@ void intraBlockScanBench(const unsigned int block_size,
            break;
        }
     }
+    printf("seq spdup = %f\n", t1.Get() / t2.Get());
+    printf("reg spdup = %f\n", t1.Get() / t3.Get());
 
     printf("success = %i\n", success);
 
@@ -96,8 +99,31 @@ void intraBlockScanBench(const unsigned int block_size,
 
 
 int main(int argc, char* argv[]) {
-    const size_t iterations = 1000000;
+    const unsigned int iterations = 1000000;
 
-    intraBlockScanBench<unsigned int>(1024, 1000, 4, iterations);
+    // The number of blocks to test with
+    std::vector<unsigned int> num_blocks = {
+        1 << 0,
+        1 << 1,
+        1 << 2,
+        1 << 3,
+        1 << 4,
+        1 << 5,
+        1 << 6,
+        1 << 7,
+        1 << 8,
+        1 << 9,
+        1 << 10,
+        1 << 11,
+        1 << 12,
+        1 << 13,
+        1 << 14,
+        // 1 << 15,
+    };
+
+    for (size_t i = 0; i < num_blocks.size(); i++) {
+        printf("==== %u ====\n", num_blocks[i]);
+        intraBlockScanBench<unsigned int>(1024, num_blocks[i], 4, iterations);
+    }
     return 0;
 }
