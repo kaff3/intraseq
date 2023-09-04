@@ -63,14 +63,13 @@ void intraBlockScanBench(const unsigned int block_size,
     cudaDeviceSynchronize();
     t3.Stop();
 
-    printf("nor = %.2f\n", t1.Get());
-    printf("seq = %.2f\n", t2.Get());
-    printf("reg = %.2f\n", t3.Get());
+    
 
     cudaMemcpy((void*)arr1, d_in1, TEST_SIZE*sizeof(T), cudaMemcpyDeviceToHost);
     cudaMemcpy((void*)arr2, d_in2, TEST_SIZE*sizeof(T), cudaMemcpyDeviceToHost);
     cudaMemcpy((void*)arr3, d_in3, TEST_SIZE*sizeof(T), cudaMemcpyDeviceToHost);
 
+    #ifdef DO_VALIDATE
     printf("loop starting\n");
     bool success = true;
     for (size_t i = 0; i < TEST_SIZE; i++) {
@@ -82,11 +81,15 @@ void intraBlockScanBench(const unsigned int block_size,
            printf("oh no at i=%i\n", i);
            break;
        }
-    }
-    printf("seq spdup = %f\n", t1.Get() / t2.Get());
-    printf("reg spdup = %f\n", t1.Get() / t3.Get());
-
     printf("success = %i\n", success);
+    }
+    #endif
+
+    // Print csv outpu
+    unsigned int seq_spdup = t1.Get() / t2.Get();
+    unsigned int reg_spdup = t1.Get() / t3.Get();
+    printf("%u, %.2f, %.2f, %.2f, %.2f, %.2f\n", TEST_SIZE, t1.Get(), t2.Get(), t3.Get(), seq_spdup, reg_spdup);
+
 
     cudaFree(d_in1);
     cudaFree(d_in2);
@@ -118,11 +121,11 @@ int main(int argc, char* argv[]) {
         1 << 12,
         1 << 13,
         1 << 14,
-        // 1 << 15,
+        1 << 15,
+        1 << 16,
     };
 
     for (size_t i = 0; i < num_blocks.size(); i++) {
-        printf("==== %u ====\n", num_blocks[i]);
         intraBlockScanBench<unsigned int>(1024, num_blocks[i], 4, iterations);
     }
     return 0;
