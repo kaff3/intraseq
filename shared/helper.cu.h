@@ -12,7 +12,7 @@
 #include <sstream>
 #include <string>
 
-#define GPU_RUNS    400
+#define GPU_RUNS    800
 
 int timeval_subtract(struct timeval *result, struct timeval *t2, struct timeval *t1)
 {

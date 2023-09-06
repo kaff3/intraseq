@@ -49,17 +49,20 @@ void intraBlockScanBench(const unsigned int block_size,
     Timer t1, t2, t3;
 
     t1.Start();
-    scan_kernel<T><<<num_blocks, block_size>>>(d_in1, TEST_SIZE, iterations);
+    for(int k=0; k<GPU_RUNS; k++)
+      scan_kernel<T><<<num_blocks, block_size>>>(d_in1, TEST_SIZE, iterations);
     cudaDeviceSynchronize();
     t1.Stop();
 
     t2.Start();
-    scan_kernel_seq<T><<<num_blocks, block_size/num_elems>>>(d_in2, TEST_SIZE, iterations);
+    for(int k=0; k<GPU_RUNS; k++)
+      scan_kernel_seq<T><<<num_blocks, block_size/num_elems>>>(d_in2, TEST_SIZE, iterations);
     cudaDeviceSynchronize();
     t2.Stop();
 
     t3.Start();
-    scan_kernel_seq_reg<T><<<num_blocks, block_size/num_elems>>>(d_in3, TEST_SIZE, iterations);
+    for(int k=0; k<GPU_RUNS; k++)
+      scan_kernel_seq_reg<T><<<num_blocks, block_size/num_elems>>>(d_in3, TEST_SIZE, iterations);
     cudaDeviceSynchronize();
     t3.Stop();
 
@@ -102,7 +105,7 @@ void intraBlockScanBench(const unsigned int block_size,
 
 
 int main(int argc, char* argv[]) {
-    const unsigned int iterations = 1000000;
+    const unsigned int iterations = 3;
 
     // The number of blocks to test with
     std::vector<unsigned int> num_blocks = {
