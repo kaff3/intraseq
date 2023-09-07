@@ -2,7 +2,7 @@
 -- based upon https://github.com/diku-dk/sorts/blob/master/lib/github.com/diku-dk/sorts/radix_sort.fut
 -- import "prelude/math"
 
-import "prelude/math"
+import "/home/kuke/Documents/futhark/prelude/math"
 
 def radix_sort_step [n] 't (xs : [n]t) (get_bit: i32 -> t -> i32) (digit_n : i32) : [n]t =
     let num x =   get_bit (digit_n+3) x << 3
