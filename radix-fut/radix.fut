@@ -1,10 +1,8 @@
 -- radix sort using 4-bit split
 -- based upon https://github.com/diku-dk/sorts/blob/master/lib/github.com/diku-dk/sorts/radix_sort.fut
--- import "prelude/math"
+import "lib/github.com/diku-dk/sorts/radix_sort"
 
-import "/home/kuke/Documents/futhark/prelude/math"
-
-def radix_sort_step [n] 't (xs : [n]t) (get_bit: i32 -> t -> i32) (digit_n : i32) : [n]t =
+def radix_sort_step_4 [n] 't (xs : [n]t) (get_bit: i32 -> t -> i32) (digit_n : i32) : [n]t =
     let num x =   get_bit (digit_n+3) x << 3
                 + get_bit (digit_n+2) x << 2 
                 + get_bit (digit_n+1) x << 1 
@@ -58,13 +56,16 @@ def radix_sort_step [n] 't (xs : [n]t) (get_bit: i32 -> t -> i32) (digit_n : i32
 
 
 -- | do the sort
-def radix_sort [n] 't (num_bits: i32) (get_bit: i32 -> t -> i32) (xs : [n]t) : [n]t =
+def radix_sort_4 [n] 't (num_bits: i32) (get_bit: i32 -> t -> i32) (xs : [n]t) : [n]t =
     let iters = if n == 0 then 0 else (num_bits+4-1)/4 
-    in loop xs for i < iters do radix_sort_step xs get_bit (i*4)
-
+    in loop xs for i < iters do radix_sort_step_4 xs get_bit (i*4)
 
 -- ==
--- entry: main
+-- entry: test_main
 -- compiled random input {[1000000]u32}
-entry main [n] (inp: [n] u32)  =
-    radix_sort i32.num_bits i32.get_bits
+-- output { false }
+entry test_main [n] (inp: [n] u32)  =
+    let res_4 = radix_sort_4 i32.num_bits u32.get_bit inp
+    let res_2 = radix_sort i32.num_bits u32.get_bit inp
+    in any (\(x, y) -> x != y) (zip res_4 res_2)
+
