@@ -12,7 +12,7 @@ def radix_sort_step_4 [n] 't (xs : [n]t) (get_bit: i32 -> t -> i32) (digit_n : i
             (a2,b2,c2,d2,e2,f2,g2,h2,i2,j2,k2,l2,m2,n2,o2,p2) =
         (a1 + a2, b1 + b2, c1 + c2, d1 + d2, e1 + e2, f1 + f2, g1 + g2, h1 + h2, i1 + i2, j1 + j2, k1 + k2, l1 + l2, m1 + m2, n1 + n2, o1 + o2, p1 + p2) 
     let bins = xs |> map num
-    let flags = #[break]  bins |> map (\x -> match x 
+    let flags = bins |> map (\x -> match x 
                                 case 0  ->(1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0)
                                 case 1  ->(0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0)
                                 case 2  ->(0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0)
