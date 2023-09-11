@@ -3,7 +3,9 @@
 #include<vector>
 #include<limits>
 
+#include"radix.cuh"
 #include"../shared/helper.cu.h"
+#include"../shared/timing.h"
 
 int main(int argc, char* argv[]) {
 
@@ -27,14 +29,16 @@ int main(int argc, char* argv[]) {
         1 << 14,
         1 << 15,
         1 << 16,
-    }
+    };
         
-    // Specialize the radix sort algorithm
-    Radix<unsigned int, 256, 4, 4> radix4;
-    radix4.InitMemory();
        
 
-    for(int i = 0; i < sizes.Count(); i++) {
+    for(int i = 0; i < sizes.size(); i++) {
+        // Specialize the radix sort algorithm
+        Radix<unsigned int, 256, 4, 4> radix4;
+        radix4.InitMemory(sizes[i]);
+
+
         // Allocate host memory
         unsigned int* h_in  = (unsigned int*)malloc(sizeof(unsigned int) * sizes[i]);
         unsigned int* h_out = (unsigned int*)malloc(sizeof(unsigned int) * sizes[i]);
@@ -88,8 +92,8 @@ int main(int argc, char* argv[]) {
         cudaFree(d_out);
         free(h_in);
         free(h_out);
+        radix4.Cleanup();
     }
 
-    radix4.Cleanup();
     return 0;
 }

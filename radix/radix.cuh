@@ -1,6 +1,9 @@
 #pragma once
 
 #include<cuda_runtime.h>
+#include<cub/cub.cuh>
+
+#define GET_DIGIT(V, I, M)  ((V >> I) & M)
 
 // Kernel A
 // Load and sort tile.
@@ -9,10 +12,12 @@ template<
     typename T,     // The type of the array to be sorted 
     int E,          // The number of elements pr. thread
     int B,          // The nmber of bits in a digit
-    // int TS,         // The nnumber of threads in a block
-    int MASK
+    int TS,         // The nnumber of threads in a block
+    int MASK,
+    size_t TILE_ELEMENTS,
+    size_t HISTOGRAM_ELEMENTS
 > __global__ void 
-localSort(T* d_in, T* d_out, size_t d_size, unsigned int* d_histogram, int digit) {
+localSort(T* d_in, T* d_out, size_t N, unsigned int* d_histogram, int digit) {
     
     // Specialize cub blockscan
     typedef cub::BlockScan<unsigned int, TS> BlockScan;
@@ -23,8 +28,8 @@ localSort(T* d_in, T* d_out, size_t d_size, unsigned int* d_histogram, int digit
     int local_tile_size = blockIdx.x == last_tile ? last_size : TILE_ELEMENTS;
 
     // Allocate all the needed shared memory
-    __shared__ T s_tile[];
-    __shared__ unsigned int s_histogram[];
+    __shared__ T s_tile[TILE_ELEMENTS];
+    __shared__ unsigned int s_histogram[HISTOGRAM_ELEMENTS];
     __shared__ union {
         typename BlockScan::TempStorage ps0;
         typename BlockScan::TempStorage ps1;
@@ -38,8 +43,8 @@ localSort(T* d_in, T* d_out, size_t d_size, unsigned int* d_histogram, int digit
     for (int i = 0; i < E; i++) {
         size_t s_index = threadIdx.x + i * blockDim.x;
         size_t d_index = blockIdx.x * TILE_ELEMENTS + s_index;
-        if (d_index < d_size) {
-            tile[s_index] = d_in[d_index];
+        if (d_index < N) {
+            s_tile[s_index] = d_in[d_index];
         }
     }
 
@@ -49,8 +54,8 @@ localSort(T* d_in, T* d_out, size_t d_size, unsigned int* d_histogram, int digit
         #pragma unroll
         for (int j = 0; j < E; j++) {
             size_t index = threadIdx.x * E + j;
-            if (index > d_size) {
-                elements[i] = tile[index];
+            if (index > N) {
+                elements[i] = s_tile[index];
             }
         }
 
@@ -105,7 +110,7 @@ localSort(T* d_in, T* d_out, size_t d_size, unsigned int* d_histogram, int digit
     for (int i = 0; i < E; i++) {
         size_t index = threadIdx.x * E + i;
         if (index < local_tile_size) {
-            T elmDigit = GET_DIGIT(elemtns[i], digit*B, mask);
+            T elmDigit = GET_DIGIT(elements[i], digit*B, MASK);
             atomicAdd(s_histogram + elmDigit, 1);
         }
     }
@@ -134,8 +139,10 @@ template<
     typename T,     // The type of the array to be sorted 
     int E,          // The number of elements pr. thread
     int B,          // The nmber of bits in a digit
-    // int TS,         // The nnumber of threads in a block
-    int MASK
+    int TS,         // The nnumber of threads in a block
+    int MASK,
+    size_t TILE_ELEMENTS,
+    size_t HISTOGRAM_ELEMENTS
 > 
 __global__ void swapBuffers(T* d_in, 
                             T* d_out, 
@@ -149,10 +156,9 @@ __global__ void swapBuffers(T* d_in,
     // load histograms into shared memory
     __shared__ unsigned int s_histogram[HISTOGRAM_ELEMENTS];
     __shared__ unsigned int s_histogram_global_scan[HISTOGRAM_ELEMENTS];
-    __shared__ unsigned int s_histogram_local_scan[HISTOGRAM_ELEMENTS];
 
     if (tid < HISTOGRAM_ELEMENTS)
-        g[tid] = d_histogram[HISTOGRAM_ELEMENTS * blockIdx.x + tid];
+        s_histogram[tid] = d_histogram[HISTOGRAM_ELEMENTS * blockIdx.x + tid];
     if (tid < HISTOGRAM_ELEMENTS)
         s_histogram_global_scan[tid] = d_histogram_scan[HISTOGRAM_ELEMENTS * blockIdx.x + tid];
     __syncthreads();
@@ -164,7 +170,7 @@ __global__ void swapBuffers(T* d_in,
     unsigned int out = 0;
     BlockScan(count).ExclusiveScan(in, out, 0, cub::Sum());
     if (tid < HISTOGRAM_ELEMENTS) {
-        s_histogram_local_scan[tid] = out;
+        s_histogram[tid] = out;
     }
     __syncthreads();
 
@@ -175,12 +181,12 @@ __global__ void swapBuffers(T* d_in,
 
         if (index < N){
             T full_val = d_in[index];
-            T val = GET_DIGIT(full_val, digit*B, mask);
+            T val = GET_DIGIT(full_val, digit*B, MASK);
             
             // global_pos: position in global array where this block should place its values with the found digits
             // local_pos:  position relative to other values with same digit in this block
             unsigned int global_pos = s_histogram_global_scan[val];
-            unsigned int local_pos = (s_histogram[val] == 1) ? 0 : loc_idx - s_histogram_local_scan[val];  
+            unsigned int local_pos = loc_idx - s_histogram[val];  
             unsigned int pos = global_pos + local_pos;
 
             // scatter
@@ -203,8 +209,6 @@ struct Radix {
     const size_t HISTOGRAM_ELEMENTS      = 1 << B; //2^B
     const size_t HISTOGRAM_SIZE          = sizeof(unsigned int) * HISTOGRAM_ELEMENTS;
     const size_t TILE_ELEMENTS           = TS * E;
-    const size_t NUM_BLOCKS              = (N + TILE_ELEMENTS - 1) / TILE_ELEMENTS;
-    const size_t HISTOGRAM_GLOBAL_SIZE   = NUM_BLOCKS * HISTOGRAM_SIZE;
     const T      MASK                    = (1 << B) - 1;
 
     unsigned int* d_histogram;
@@ -214,7 +218,11 @@ struct Radix {
     size_t d_tmp_storage_size;
     
     public:
-    void InitMemory() {
+    void InitMemory(size_t N) {
+
+        const size_t NUM_BLOCKS = (N + TILE_ELEMENTS - 1) / TILE_ELEMENTS;
+        const size_t HISTOGRAM_GLOBAL_SIZE   = NUM_BLOCKS * HISTOGRAM_SIZE;
+
         cudaMalloc((void**)&(this->d_histogram), HISTOGRAM_GLOBAL_SIZE);
         cudaMalloc((void**)&(this->d_histogram_scan), HISTOGRAM_GLOBAL_SIZE);
         cudaMalloc((void**)&(this->d_histogram_transpose), HISTOGRAM_GLOBAL_SIZE);
@@ -234,9 +242,11 @@ struct Radix {
 
     void Sort(T* d_in, T* d_out, const size_t N) {
 
-        int interations = sizeof(T)*8 / B;
+        const size_t NUM_BLOCKS = (N + TILE_ELEMENTS - 1) / TILE_ELEMENTS;
+    
+        int iterations = sizeof(T)*8 / B;
         for (int i = 0; i < iterations; i++) {
-            localSort<T, E, B, MASK><<<NUM_BLOCKS, TS>>>(d_in, d_out, N, d_histogram, i)
+            localSort<T, E, B, TS, MASK, TILE_ELEMENTS, HISTOGRAM_ELEMENTS><<<NUM_BLOCKS, TS>>>(d_in, d_out, N, d_histogram, i);
 
             transposeTiled<unsigned int, 32>(d_histogram,
                                              d_histogram_transpose,
@@ -246,7 +256,7 @@ struct Radix {
                                            d_tmp_Storage_size, 
                                            d_histogram_transpose, 
                                            d_histogram_scan, 
-                                           cub::Sum(), 
+                                           cub::Sum(),
                                            NUM_BLOCKS * HISTOGRAM_ELEMENTS);
             transposeTiled<unsigned int, 32>(d_histogram_scan, 
                                              d_histogram_transpose, 
@@ -258,7 +268,7 @@ struct Radix {
             d_histogram_scan = d_histogram_transpose;
             d_histogram_transpose = tmp;
 
-            swapBuffers<T, E, B, TS, MASK><<<NUM_BLOCKS, TS>>>(d_in,
+            swapBuffers<T, E, B, TS, MASK, TILE_ELEMENTS, HISTOGRAM_ELEMENTS><<<NUM_BLOCKS, TS>>>(d_in,
                                                                d_out, 
                                                                N, 
                                                                d_histogram, 
