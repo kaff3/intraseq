@@ -9,11 +9,11 @@ template<
     typename T,     // The type of the array to be sorted 
     int E,          // The number of elements pr. thread
     int B,          // The nmber of bits in a digit
-    int TS,         // The nnumber of threads in a block
+    // int TS,         // The nnumber of threads in a block
     int MASK
 > __global__ void 
 localSort(T* d_in, T* d_out, size_t d_size, unsigned int* d_histogram, int digit) {
-
+    
     // Specialize cub blockscan
     typedef cub::BlockScan<unsigned int, TS> BlockScan;
 
@@ -128,15 +128,146 @@ localSort(T* d_in, T* d_out, size_t d_size, unsigned int* d_histogram, int digit
     }
 } // end localSort kernel
 
-// Kernel B
-// Scan global histogram
-__global__ void histogramScan();
-
 // Kernel C
 // Copy elements to correct output
-__global__ void swapBuffers();
+template<
+    typename T,     // The type of the array to be sorted 
+    int E,          // The number of elements pr. thread
+    int B,          // The nmber of bits in a digit
+    // int TS,         // The nnumber of threads in a block
+    int MASK
+> 
+__global__ void swapBuffers(T* d_in, 
+                            T* d_out, 
+                            size_t N, 
+                            unsigned int* d_histogram, 
+                            unsigned int* d_histogram_scan, 
+                            int digit)
+{
+    int tid = threadIdx.x;
+    
+    // load histograms into shared memory
+    __shared__ unsigned int s_histogram[HISTOGRAM_ELEMENTS];
+    __shared__ unsigned int s_histogram_global_scan[HISTOGRAM_ELEMENTS];
+    __shared__ unsigned int s_histogram_local_scan[HISTOGRAM_ELEMENTS];
 
-/* 
-Kan man ikke gøre det hele i en enkelt kernel ved at bruge nogle smarte CUB ting til at skanne
-det "globale" histogram på tværs af thread blocks?
-*/
+    if (tid < HISTOGRAM_ELEMENTS)
+        g[tid] = d_histogram[HISTOGRAM_ELEMENTS * blockIdx.x + tid];
+    if (tid < HISTOGRAM_ELEMENTS)
+        s_histogram_global_scan[tid] = d_histogram_scan[HISTOGRAM_ELEMENTS * blockIdx.x + tid];
+    __syncthreads();
+        
+    // Scan across threads in block to create the locally scanned histogram.
+    typedef cub::BlockScan<unsigned int, TS> BlockScan;
+    __shared__ typename BlockScan::TempStorage count;
+    unsigned int in = s_histogram[tid % HISTOGRAM_ELEMENTS];
+    unsigned int out = 0;
+    BlockScan(count).ExclusiveScan(in, out, 0, cub::Sum());
+    if (tid < HISTOGRAM_ELEMENTS) {
+        s_histogram_local_scan[tid] = out;
+    }
+    __syncthreads();
+
+    #pragma unroll
+    for (int i = 0; i < E; i++){
+        size_t loc_idx = tid + (i * blockDim.x);
+        size_t index = blockIdx.x * TILE_ELEMENTS + loc_idx;
+
+        if (index < N){
+            T full_val = d_in[index];
+            T val = GET_DIGIT(full_val, digit*B, mask);
+            
+            // global_pos: position in global array where this block should place its values with the found digits
+            // local_pos:  position relative to other values with same digit in this block
+            unsigned int global_pos = s_histogram_global_scan[val];
+            unsigned int local_pos = (s_histogram[val] == 1) ? 0 : loc_idx - s_histogram_local_scan[val];  
+            unsigned int pos = global_pos + local_pos;
+
+            // scatter
+            d_out[pos] = full_val;            
+        }
+    }
+};
+
+
+
+// Cpu side function that manages the kernel invocations
+template<
+    typename T,
+    int TS,
+    int E,
+    int B
+>
+struct Radix {
+    private:
+    const size_t HISTOGRAM_ELEMENTS      = 1 << B; //2^B
+    const size_t HISTOGRAM_SIZE          = sizeof(unsigned int) * HISTOGRAM_ELEMENTS;
+    const size_t TILE_ELEMENTS           = TS * E;
+    const size_t NUM_BLOCKS              = (N + TILE_ELEMENTS - 1) / TILE_ELEMENTS;
+    const size_t HISTOGRAM_GLOBAL_SIZE   = NUM_BLOCKS * HISTOGRAM_SIZE;
+    const T      MASK                    = (1 << B) - 1;
+
+    unsigned int* d_histogram;
+    unsigned int* d_hitogram_scan;
+    unsigned int* d_histogram_transpose;
+    void* d_tmp_storage;
+    size_t d_tmp_storage_size;
+    
+    public:
+    void InitMemory() {
+        cudaMalloc((void**)&(this->d_histogram), HISTOGRAM_GLOBAL_SIZE);
+        cudaMalloc((void**)&(this->d_histogram_scan), HISTOGRAM_GLOBAL_SIZE);
+        cudaMalloc((void**)&(this->d_histogram_transpose), HISTOGRAM_GLOBAL_SIZE);
+
+        cub::DeviceScan::ExclusiveScan(NULL, 
+                                       d_tmp_storage_size,
+                                       d_histogram, 
+                                       d_histogram, 
+                                       cub::Sum(), 
+                                       0, 
+                                       NUM_BLOCKS*HISTOGRAM_ELEMENTS);
+        cudaMalloc((void**)&d_tmp_storage, d_tmp_storage_size);
+    }
+
+    // Cleanup and free memory
+    void Cleanup();
+
+    void Sort(T* d_in, T* d_out, const size_t N) {
+
+        int interations = sizeof(T)*8 / B;
+        for (int i = 0; i < iterations; i++) {
+            localSort<T, E, B, MASK><<<NUM_BLOCKS, TS>>>(d_in, d_out, N, d_histogram, i)
+
+            transposeTiled<unsigned int, 32>(d_histogram,
+                                             d_histogram_transpose,
+                                             NUM_BLOCKS,
+                                             HISTOGRAM_ELEMENTS);
+            cub::DeviceScan::ExclusiveScan(d_tmp_storage, 
+                                           d_tmp_Storage_size, 
+                                           d_histogram_transpose, 
+                                           d_histogram_scan, 
+                                           cub::Sum(), 
+                                           NUM_BLOCKS * HISTOGRAM_ELEMENTS);
+            transposeTiled<unsigned int, 32>(d_histogram_scan, 
+                                             d_histogram_transpose, 
+                                             HISTOGRAM_ELEMENTS, 
+                                             NUM_BLOCKS);
+
+            unsigned int* tmp;
+            tmp = d_histogram_scan;
+            d_histogram_scan = d_histogram_transpose;
+            d_histogram_transpose = tmp;
+
+            swapBuffers<T, E, B, TS, MASK><<<NUM_BLOCKS, TS>>>(d_in,
+                                                               d_out, 
+                                                               N, 
+                                                               d_histogram, 
+                                                               d_histogram_scan, 
+                                                               i // The digit we are looking at
+                                                               );
+        }
+        
+
+    }
+
+}
