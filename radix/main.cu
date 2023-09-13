@@ -35,7 +35,7 @@ int main(int argc, char* argv[]) {
 
     for(int i = 0; i < sizes.size(); i++) {
         // Specialize the radix sort algorithm
-        Radix<unsigned int, 256, 4, 4> radix4;
+        Radix<unsigned int, 4, 4, 256> radix4;
         radix4.InitMemory(sizes[i]);
 
 
@@ -48,7 +48,10 @@ int main(int argc, char* argv[]) {
         // move to device
         unsigned int* d_in;
         unsigned int* d_out;
-        cudaMemcpy(d_in, (void*)h_in, sizeof(unsigned int) * sizes[i], cudaMemcpyHostToDevice);
+        cudaMalloc((void**)&d_in, sizeof(unsigned int) * sizes[i]);
+        cudaMalloc((void**)&d_out, sizeof(unsigned int) * sizes[i]);
+
+        cudaMemcpy(d_in, h_in, sizeof(unsigned int) * sizes[i], cudaMemcpyHostToDevice);
 
         Timer t1;
 
@@ -58,7 +61,7 @@ int main(int argc, char* argv[]) {
 
         printf("%u\n", t1.Get());
 
-        cudaMemcpy((void*)h_out, d_in, sizeof(unsigned int) * sizes[i], cudaMemcpyDeviceToHost);
+        cudaMemcpy(h_out, d_in, sizeof(unsigned int) * sizes[i], cudaMemcpyDeviceToHost);
         
         #ifdef DO_VALIDATE
         // Allocations needed for validation

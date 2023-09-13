@@ -3,6 +3,10 @@
 #include<cuda_runtime.h>
 #include<cub/cub.cuh>
 
+// Order of these two are important!
+#include"transpose-kernels.cu.h"
+#include"transpose-host.cu.h"
+
 #define GET_DIGIT(V, I, M)  ((V >> I) & M)
 
 // Kernel A
@@ -144,12 +148,7 @@ template<
     size_t TILE_ELEMENTS,
     size_t HISTOGRAM_ELEMENTS
 > 
-__global__ void swapBuffers(T* d_in, 
-                            T* d_out, 
-                            size_t N, 
-                            unsigned int* d_histogram, 
-                            unsigned int* d_histogram_scan, 
-                            int digit)
+__global__ void swapBuffers(T* d_in, T* d_out, size_t N, unsigned int* d_histogram, unsigned int* d_histogram_scan, int digit)
 {
     int tid = threadIdx.x;
     
@@ -200,9 +199,9 @@ __global__ void swapBuffers(T* d_in,
 // Cpu side function that manages the kernel invocations
 template<
     typename T,
-    int TS,
     int E,
-    int B
+    int B,
+    int TS
 >
 struct Radix {
     private:
@@ -242,27 +241,29 @@ struct Radix {
     void Cleanup();
 
     // The main function that 
-    void Sort(T* d_in, T* d_out, const size_t N) {
+    void Sort(T* d_in, T* d_out, size_t N) {
 
         const size_t NUM_BLOCKS = (N + TILE_ELEMENTS - 1) / TILE_ELEMENTS;
     
         int iterations = sizeof(T)*8 / B;
         for (int i = 0; i < iterations; i++) {
-            localSort<T, E, B, TS, MASK, TILE_ELEMENTS, HISTOGRAM_ELEMENTS><<<NUM_BLOCKS, TS>>>(d_in, d_out, N, d_histogram, i);
+            localSort<T, E, B, TS, this->MASK, this->TILE_ELEMENTS, this->HISTOGRAM_ELEMENTS>
+                     <<<NUM_BLOCKS, TS>>>
+                     (d_in, d_out, N, d_histogram, i);
 
             transposeTiled<unsigned int, 32>(d_histogram,
                                              d_histogram_transpose,
                                              NUM_BLOCKS,
-                                             HISTOGRAM_ELEMENTS);
+                                             this->HISTOGRAM_ELEMENTS);
             cub::DeviceScan::ExclusiveScan(d_tmp_storage, 
-                                           d_tmp_Storage_size, 
+                                           d_tmp_storage_size, 
                                            d_histogram_transpose, 
                                            d_histogram_scan, 
                                            cub::Sum(),
-                                           NUM_BLOCKS * HISTOGRAM_ELEMENTS);
+                                           NUM_BLOCKS * this->HISTOGRAM_ELEMENTS);
             transposeTiled<unsigned int, 32>(d_histogram_scan, 
                                              d_histogram_transpose, 
-                                             HISTOGRAM_ELEMENTS, 
+                                             this->HISTOGRAM_ELEMENTS, 
                                              NUM_BLOCKS);
 
             unsigned int* tmp;
@@ -270,13 +271,9 @@ struct Radix {
             d_histogram_scan = d_histogram_transpose;
             d_histogram_transpose = tmp;
 
-            swapBuffers<T, E, B, TS, MASK, TILE_ELEMENTS, HISTOGRAM_ELEMENTS><<<NUM_BLOCKS, TS>>>(d_in,
-                                                               d_out, 
-                                                               N, 
-                                                               d_histogram, 
-                                                               d_histogram_scan, 
-                                                               i // The digit we are looking at
-                                                               );
+            swapBuffers<T, E, B, TS, this->MASK, this->TILE_ELEMENTS, this->HISTOGRAM_ELEMENTS>
+                       <<<NUM_BLOCKS, TS>>>
+                       (d_in, d_out, N, d_histogram, d_histogram_scan, i);
         }
         
 
