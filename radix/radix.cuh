@@ -76,7 +76,7 @@ localSort(T* d_in, T* d_out, size_t N, unsigned int* d_histogram, int digit) {
 
         // Scan across the block histograms
         unsigned int aggregate;
-        BlocksScan(ps_storage.ps0).ExclusiveScan(ps0, ps0, cub::Sum(), aggregate);
+        BlocksScan(ps_storage.ps0).ExclusiveScan(ps0, ps0, 0, cub::Sum(), aggregate);
         __syncthreads();
         BlockScan(ps_storage.ps1).ExclusiveScan(ps1, ps1, aggregate, cub::Sum());
         __syncthreads();
@@ -206,13 +206,14 @@ template<
 >
 struct Radix {
     private:
-    const size_t HISTOGRAM_ELEMENTS      = 1 << B; //2^B
-    const size_t HISTOGRAM_SIZE          = sizeof(unsigned int) * HISTOGRAM_ELEMENTS;
-    const size_t TILE_ELEMENTS           = TS * E;
-    const T      MASK                    = (1 << B) - 1;
+    const size_t HISTOGRAM_ELEMENTS = 1 << B;                                       // Number of elements in shared histogram
+    const size_t HISTOGRAM_SIZE     = sizeof(unsigned int) * HISTOGRAM_ELEMENTS;    // Size in bytes of shared histogram
+    const size_t TILE_ELEMENTS      = TS * E;                                       // The number of elements processed
+    const T      MASK               = (1 << B) - 1;                                 // The mask needed to extract a digit
 
+    // Pointers to additional global device memory needed to store histograms
     unsigned int* d_histogram;
-    unsigned int* d_hitogram_scan;
+    unsigned int* d_histogram_scan;
     unsigned int* d_histogram_transpose;
     void* d_tmp_storage;
     size_t d_tmp_storage_size;
@@ -240,6 +241,7 @@ struct Radix {
     // Cleanup and free memory
     void Cleanup();
 
+    // The main function that 
     void Sort(T* d_in, T* d_out, const size_t N) {
 
         const size_t NUM_BLOCKS = (N + TILE_ELEMENTS - 1) / TILE_ELEMENTS;
@@ -280,4 +282,4 @@ struct Radix {
 
     }
 
-}
+};
