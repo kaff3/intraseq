@@ -1,7 +1,7 @@
 
 // Include the three versions of radix we want to test
 #include"./radix.cuh"
-// #include"./radix-cub.cuh"
+#include"./radix-cub.cuh"
 #include"../shared/helper.cu.h"
 // Standard includes
 #include<stdio.h>
@@ -19,12 +19,6 @@
 
 
 int GetMask(int b){
-    // int res = 0;
-    // for (int i = 0; i < b; i++) {
-    //     res = res << 1;
-    //     res = res | 1;
-    // }
-    // return res;
     return (1 << b) - 1;
 }
 
@@ -263,6 +257,7 @@ void test(size_t N, int runs) {
     // Allocate host memory
     T* h_in  = (T*)malloc(alloc_size);
     T* h_out = (T*)malloc(alloc_size);
+    randomInitNat(h_in, N, N);
 
     // Allocate device memory
     T* d_in;
@@ -277,13 +272,20 @@ void test(size_t N, int runs) {
     unsigned int* d_hist1;
     unsigned int* d_hist2;
     unsigned int* d_hist3;
-    Radix::AllocateHistograms(d_hist1, d_hist2, d_hist3, N);
     void* d_temp_storage;
-    Radix::AllocateTempStorage(d_temp_storage, N, d_hist1);
+    cudaMalloc((void**)&d_hist1, Radix::HistogramStorageSize(N));
+    cudaMalloc((void**)&d_hist2, Radix::HistogramStorageSize(N));
+    cudaMalloc((void**)&d_hist3, Radix::HistogramStorageSize(N));
+    cudaMalloc((void**)&d_temp_storage, Radix::TempStorageSize(N, d_hist1));
+
+    // Radix::AllocateHistograms(d_hist1, d_hist2, d_hist3, N);
+    // Radix::AllocateTempStorage(d_temp_storage, N, d_hist1);
 
     // Initialize array and move to device
-    randomInitNat(h_in, N, N);
-    cudaMemcpy(d_in, h_in, sizeof(T) * N, cudaMemcpyHostToDevice);
+    cudaMemcpy(d_in, h_in, alloc_size, cudaMemcpyHostToDevice);
+
+    Radix::Sort(d_in, d_out, N, d_hist1, d_hist2, d_hist3, d_temp_storage, GetMask(B));
+    cudaDeviceSynchronize();
 
     // Perform multiple runs
     Timer t1;
@@ -295,12 +297,43 @@ void test(size_t N, int runs) {
     t1.Stop();
 
     // Read out array to make sure nothing gets optimized away
-    cudaMemcpy(h_out, d_out, sizeof(T) * N, cudaMemcpyDeviceToHost);
+    cudaMemcpy(h_out, d_out, alloc_size, cudaMemcpyDeviceToHost);
 
-    h_out[0] = 0;
+    #ifdef DO_VALIDATE 
+        // Run the cub version for validation
 
-    printf("%u, %.2f\n", N, t1.Get());
+        // Allocate cub memory
+        T* h_out_cub = (T*)malloc(alloc_size);
 
+        void* d_tmp = NULL;
+        size_t tmp_size_bytes = 0;
+        cub::DeviceRadixSort::SortKeys(d_tmp, tmp_size_bytes, d_in, d_out, N);
+        cudaMalloc((void**)&d_tmp, tmp_size_bytes);
+
+        // Prepare and execute
+        cudaMemcpy(d_in, h_in, alloc_size, cudaMemcpyHostToDevice);
+        RadixSortCub<T>(d_in, d_out, N, d_tmp, tmp_size_bytes);
+        cudaMemcpy(h_out_cub, d_out, alloc_size, cudaMemcpyDeviceToHost);
+
+        bool valid = true;
+        for (size_t k = 0; k < N; k++) {
+            if (h_out[k] != h_out_cub[k]) {
+                printf("Validation error at k = %u\n", k);
+                printf("%u != %u\n", h_out[k], h_out_cub[k]);
+                valid = false;
+                break;
+            }
+        }
+        if (valid)
+            printf("Valid for N = %u\n", N);
+
+        free(h_out_cub);
+        cudaFree(d_tmp);
+    #endif
+
+    #ifndef DO_VALIDATE
+        printf("%u, %.2f\n", N, t1.Get());
+    #endif
 
     // Free all memory
     free(h_in);
@@ -317,7 +350,7 @@ void test(size_t N, int runs) {
 int main(int argc, char* argv[]) {
 
     if (argc < 2) {
-        printf("Usage: ./radix <gpu runs>\n");
+        printf("Usage: %s <gpu runs>\n", argv[0]);
         return 0;
     }
 
