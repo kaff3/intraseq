@@ -89,6 +89,80 @@ void scan_kernel(T* d_in, size_t N, size_t iter) {
 }
 
 
+    
+template<typename T>
+__global__
+void scan_kernel_seq_reg(T* d_in, size_t N, size_t iter) {
+    unsigned int tid = threadIdx.x;
+
+    const size_t num_elems = MAX_THREADS_BLOCK / BLOCKDIM_X2;
+
+    volatile __shared__ T sh_mem[BLOCKDIM_X2 * sizeof(T) * num_elems];
+
+    // Load into shared memory
+    #pragma unroll
+    for (size_t i = 0; i < num_elems; i++) {
+        size_t s_index = threadIdx.x + i * blockDim.x;
+        size_t d_index = blockIdx.x * MAX_THREADS_BLOCK + s_index;
+        if (d_index < N)
+            sh_mem[s_index] = d_in[d_index];
+    }
+    __syncthreads();
+
+
+    // Perform iter scans
+    for (size_t i = 0; i < iter; i++) {
+
+        // Load into registers
+        T reg_arr[num_elems];
+        #pragma unroll
+        for (size_t i = 0; i < num_elems; i++) {
+            reg_arr[i] = sh_mem[tid * num_elems + i];
+        }
+        __syncthreads();
+
+        // Do element wise scans in register
+        T accum = 0;
+        #pragma unroll
+        for (size_t i = 0; i < num_elems; i++) {
+            accum += reg_arr[i];
+            reg_arr[i] = accum;
+        }
+        sh_mem[tid] = accum;
+        __syncthreads();
+        
+        sh_mem[tid] = scan_inc_block<T>(sh_tmp, tid);
+        __syncthreads();
+        
+        if (tid > 0) {
+            T accum = sh_mem[tid-1];
+            
+            for (size_t i = 0; i < num_elems; i++) {
+                reg_arr[i] += accum;
+            }
+        }
+        __syncthreads();
+
+        // Register to shared mem
+        #pragma unroll
+        for (size_t i = 0; i < num_elems; i++) {
+            sh_mem[tid * num_elems + i] = reg_arr[i];
+        }
+        __syncthreads();
+    }
+
+
+    // Store in global memory
+    #pragma unroll
+    for (size_t i = 0; i < num_elems; i++) {
+        size_t s_index = threadIdx.x + i * blockDim.x;
+        size_t d_index = blockIdx.x * MAX_THREADS_BLOCK + s_index;
+        if (d_index < N)
+            d_in[d_index] =  sh_mem[s_index];
+    }
+
+}
+
 template<typename T>
 __global__
 void scan_kernel_seq(T* d_in, size_t N, size_t iter) {
@@ -136,80 +210,6 @@ void scan_kernel_seq(T* d_in, size_t N, size_t iter) {
         }
         __syncthreads();
     }
-
-    // Store in global memory
-    #pragma unroll
-    for (size_t i = 0; i < num_elems; i++) {
-        size_t s_index = threadIdx.x + i * blockDim.x;
-        size_t d_index = blockIdx.x * MAX_THREADS_BLOCK + s_index;
-        if (d_index < N)
-            d_in[d_index] =  sh_mem[s_index];
-    }
-
-}
-    
-template<typename T>
-__global__
-void scan_kernel_seq_reg(T* d_in, size_t N, size_t iter) {
-    unsigned int tid = threadIdx.x;
-
-    const size_t num_elems = MAX_THREADS_BLOCK / BLOCKDIM_X2;
-
-    volatile __shared__ T sh_mem[BLOCKDIM_X2 * sizeof(T) * num_elems];
-    volatile __shared__ T sh_tmp[BLOCKDIM_X2 * sizeof(T)];
-
-    // Load into shared memory
-    #pragma unroll
-    for (size_t i = 0; i < num_elems; i++) {
-        size_t s_index = threadIdx.x + i * blockDim.x;
-        size_t d_index = blockIdx.x * MAX_THREADS_BLOCK + s_index;
-        if (d_index < N)
-            sh_mem[s_index] = d_in[d_index];
-    }
-    __syncthreads();
-
-
-    // Perform iter scans
-    for (size_t i = 0; i < iter; i++) {
-
-        // Load into registers
-        T reg_arr[num_elems];
-        #pragma unroll
-        for (size_t i = 0; i < num_elems; i++) {
-            reg_arr[i] = sh_mem[tid * num_elems + i];
-        }
-        __syncthreads();
-
-        // Do element wise scans in register
-        T accum = 0;
-        #pragma unroll
-        for (size_t i = 0; i < num_elems; i++) {
-            accum += reg_arr[i];
-            reg_arr[i] = accum;
-        }
-        sh_tmp[threadIdx.x] = accum;
-        __syncthreads();
-        
-        sh_tmp[tid] = scan_inc_block<T>(sh_tmp, tid);
-        __syncthreads();
-        
-        if (tid > 0) {
-            T accum = sh_tmp[tid-1];
-            
-            for (size_t i = 0; i < num_elems; i++) {
-                reg_arr[i] += accum;
-            }
-        }
-        __syncthreads();
-
-        // Register to shared mem
-        #pragma unroll
-        for (size_t i = 0; i < num_elems; i++) {
-            sh_mem[tid * num_elems + i] = reg_arr[i];
-        }
-        __syncthreads();
-    }
-
 
     // Store in global memory
     #pragma unroll

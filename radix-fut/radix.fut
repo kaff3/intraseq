@@ -3,7 +3,7 @@ let cmap as f = map f as
 -- e: the number of elements pr. thread
 -- ==
 -- entry: step
--- compiled radnom input {22i64 1i64 1024i64 [22528]u32}
+-- compiled random input {22i64 1i64 1024i64 [22528]u32}
 let step [num_blocks] (e : i64) (digit : i32) (num_threads : i64) (arr : [num_blocks][]u32) =
     let b_splits = 4
     let b = 4
@@ -34,7 +34,8 @@ let step [num_blocks] (e : i64) (digit : i32) (num_threads : i64) (arr : [num_bl
                         let bit = ((x >> (digit*b + i)) & 1) 
                         in (ps0 + bit^1, ps1 + bit)
                         ) sh_tile[tid*e : (tid+1)*e] (0,0)  
-                    in psss[tid] = pss     
+                    let psss[tid] = pss
+                    in psss     
                 
                 -- scan 
                 let agg = reduce (\ (a0, _) (x, _) -> (0, a0+x)) (0,0) psss 
@@ -75,4 +76,4 @@ let step [num_blocks] (e : i64) (digit : i32) (num_threads : i64) (arr : [num_bl
         )
     )
 
-    in g_hist;
+
