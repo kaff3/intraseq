@@ -11,7 +11,8 @@ let main [num_blocks] (b: i64) (m: i64) (arr: [num_blocks][]f32) =
         let shmem =
           loop shmem for k < m do
             let vals = map (\ i -> arr[blkid][k*b + i]) (iota b)
-            in  scatter shmem (iota b) vals
+            let iota_arr = map (\ i -> k*b + i) (iota b)
+            in  scatter shmem iota_arr vals
         let shmem =
           loop shmem for k < m do
             let shmem[k*b: k*b+b] = scan (+) 0 (shmem[k*b: k*b+b])
