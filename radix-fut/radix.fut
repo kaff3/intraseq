@@ -21,10 +21,10 @@ let step [num_blocks] (e : i64) (digit : u32) (num_threads : i64) (arr : [num_bl
 
             -- Load the tile 
             let sh_tile = 
-                map (\ tid -> 
+                flatten (map (\ tid -> 
                   loop sh_tile for k < e do
                       sh_tile with [tid*e + k] = arr[blkid][tid*e + k]
-                ) num_threads_iota
+                ) num_threads_iota)
             
             -- Local sort, bit iterations of 1-bit split
             let psss = replicate num_threads (0,0)
@@ -49,14 +49,14 @@ let step [num_blocks] (e : i64) (digit : u32) (num_threads : i64) (arr : [num_bl
                     let sc_excl = [(0,0)] ++ init sc 
                     
                     -- scatter
-                    let idxs = replicate e 0                
+                    let idxs = replicate e 0i64                
                     let _ = loop (ps0, ps1) = sc_excl[tid] for x < e do
                               let ele = sh_tile[tid+x]
                               let bit = ((ele >> (digit*4 + (u32.i64 i))) & 1)
-                              let idxs[x] = if bit == 0 then ps0 else ps1
+                              let idxs[x] = if bit == 0 then i64.u32 ps0 else i64.u32 ps1
                               in (ps0 + bit^1, ps1 + bit)
 
-                    in scatter sh_tile idxs sh_tile[tid*e : (tid+1)*e] -- MAYBE NEED COPY ??       
+                    in scatter sh_tile idxs (sh_tile[tid*e : tid*e+e] :> [e]u32)-- MAYBE NEED COPY ?
                 in tid
             ) num_threads_iota
 
@@ -64,8 +64,8 @@ let step [num_blocks] (e : i64) (digit : u32) (num_threads : i64) (arr : [num_bl
             -- !!!!!SEQ!!!!! fix pls
             let sh_hist = loop sh_hist for i < e*num_threads do
                 let ele = sh_tile[i]
-                let digit = ele >> (digit * b) & 0xFF
-                let sh_hist[digit] = sh_hist[digit] + 1
+                let dig = ele >> (digit * 4) & 0xFF
+                let sh_hist[dig] = sh_hist[dig] + 1
                 in sh_hist 
 
             -- write back sorted tile
