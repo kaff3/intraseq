@@ -23,8 +23,7 @@ let step [num_blocks] (e : i64) (digit : u32) (num_threads : i64) (arr : [num_bl
             let sh_tile = 
                 map (\ tid -> 
                   loop sh_tile for k < e do
-                      let sh_tile[tid*e + k] = arr[blkid][tid*e + k]
-                      in sh_tile
+                      sh_tile with [tid*e + k] = arr[blkid][tid*e + k]
                 ) num_threads_iota
             
             -- Local sort, bit iterations of 1-bit split
