@@ -64,19 +64,21 @@ let step [num_blocks] (e : i64) (digit : u32) (num_threads : i64) (arr : [num_bl
             -- !!!!!SEQ!!!!! fix pls
             let sh_hist = loop sh_hist for i < e*num_threads do
                 let ele = sh_tile[i]
-                let dig = ele >> (digit * 4) & 0xFF
+                let dig = i64.u32 ((ele >> (digit * 4)) & 0xFF)
                 let sh_hist[dig] = sh_hist[dig] + 1
                 in sh_hist 
 
             -- write back sorted tile
-            cmap (num_threads_iota) (\ tid ->
-                loop arr for k < e do
+            let _ = cmap (num_threads_iota) (\ tid ->
+                let arr = loop arr for k < e do
                     arr[blkid] with [tid*e + k] = sh_tile[tid*e + k]
+                in tid
             )
             
             -- writeback histogram
-            cmap (iota (2**b)) (\ i -> 
-                g_hist[blkid] with [i] = sh_hist[i]
+            let _ = cmap (iota (2**b)) (\ i -> 
+                let g_hist = g_hist[blkid] with [i] = sh_hist[i]
+                in i
             )
             
             -- what to put here
