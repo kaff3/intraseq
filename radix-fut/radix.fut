@@ -1,35 +1,76 @@
-let cmap as f = map f as
+let imap as f = map f as
 
 -- e: the number of elements pr. thread
 -- ==
 -- entry: step
 -- compiled random input {22i64 1i64 1024i64 [22528]u32}
-let step [num_blocks] [num_threads] [e] (digit : u32) (arr : *[num_blocks][num_threads*e]u32)
-          : *[num_blocks][2**4]u32 =
-    let b = 4
 
-    let (g_hist, arr) = cmap (iota num_blocks)
-        ( \ blkid ->
-            let sh_hist = replicate (2**b) 0u32
-            -- Load tile
-            let sh_tile = arr[blkid]
+-- num_elems = e * num_threads
+let step [num_blocks] [num_elems] (num_threads : i64) (e : i64) (digit : u32) 
+         (arr : *[num_blocks][num_elems]u32) : *[num_blocks][]u32 =
 
-            let sh_tile = loop sh_tile for i < b do 
-                let (p0, p1) = partition (\e -> 
-                    if (e >> (digit*4 + (u32.i64 i))) & 1 == 0 then true else false
-                ) sh_tile
-                in (p0 ++ p1) :> [num_threads*e]u32
+    -- rankkernel
+    let arr = imap (iota num_blocks)
+    ( \ blkid ->
 
-            -- blockwide hist
-            -- !!!!!SEQ!!!!! fix pls
-            let sh_hist = loop sh_hist for i < e*num_threads do
-                let ele = sh_tile[i]
-                let dig = i64.u32 ((ele >> (digit * 4)) & 0xFF)
-                in sh_hist with [dig] = sh_hist[dig] + 1
+        -- then number of splits
+        let b = 4
 
-            in (sh_hist, sh_tile)
-        ) |> unzip
+        -- Load the tile
+        let sh_tile = arr[blkid]
 
-        in g_hist
+        in loop sh_tile for k < b do
+
+            -- Compute indices used for scatter
+            
+            -- sh_hist_bit is a collective histogram over the amount of bits set and unset 
+            -- in each chunk
+            let sh_hist_bit = imap (iota num_threads)
+            ( \ tid ->
+                -- the elements the thread should work on
+                let chunk = sh_tile[tid*e : (tid+1)*e]
+
+                let hist = 
+                    loop (b0, b1) = (0,0) for i < e do
+                        let elem = chunk[i]
+                        let bit = u32.get_bit k elem
+                        in if bit == 0 then
+                            (b0+1, b1)
+                        else
+                            (b0, b1+1)
+
+                in hist
+            )
+            |> unzip
+            |> (\ (b0s, b1s) -> 
+                let b0s_red = reduce (+) 0 b0s
+                let b0s_scan = scan (+) 0 b0s       |> init |> (\ x -> [0] ++ x)
+                let b1s_scan = scan (+) b0s_red b1s |> init |> (\ x -> [b0s_red] ++ x)
+                in zip b0s_scan b1s_scan
+            )
+
+            -- Now each thread can use the now scanned histogram to compute block local
+            -- indices for all of its elements
+            let idxs = imap (iota num_threads)
+            (\ tid ->
+                let chunk = sh_tile[tid*e : (tid+1)*e]
+                let hist = sh_hist_bit[tid]
+
+                let (idxs, _) =
+                    loop (idxs, (b0,b1)) = (replicate e 0i64, hist) for i < e do
+                        let elem = chunk[i]
+                        let bit = u32.get_bit k elem
+                        in if bit == 0 then 
+                            (idxs with [i] = b0, (b0+1, b1))
+                        else
+                            (idxs with [i] = b1, (b0, b1+1))
+                in idxs
+            )
+            |> flatten :> [num_elems]i64
+
+            in scatter (copy sh_tile) idxs sh_tile
+    )
+
+    in arr 
 
 
