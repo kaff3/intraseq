@@ -67,9 +67,15 @@ let step [num_blocks] [num_elems] (num_threads : i64) (e : i64) (digit : u32)
                 in idxs
             )
             |> flatten :> [num_elems]i64
-
             in scatter (copy sh_tile) idxs sh_tile
+
+            -- let sh_tile' = 
+            --     loop sh_tile' = copy sh_tile for i < e do
+            --         scatter sh_tile' idxs[i] sh_tile
+            
+            -- in sh_tile'
     )
+
 
     in arr 
 
