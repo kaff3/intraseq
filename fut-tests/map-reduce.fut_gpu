@@ -1,0 +1,113 @@
+Up to date
+types {
+  
+}
+
+
+
+entry("main",
+      {a: [][]i64},
+      {*[][]i64})
+  entry_main (n_5338 : i64,
+              m_5339 : i64,
+              a_5340 : [n_5338][m_5339]i64)
+  : {*[n_5338][m_5339]i64} = {
+  let {max_group_size_5657 : i64} =
+    get_size_max(group_size)
+  let {fits_5658 : bool} =
+    sle64(m_5339, max_group_size_5657)
+  let {suff_intra_par_5656 : bool} =
+    cmp_size(suff_intra_par_0, threshold(32, )) <= m_5339
+  let {intra_suff_and_fits_5659 : bool} =
+    logand(suff_intra_par_5656, fits_5658)
+  let {segmap_group_size_5737 : i64} =
+    get_size(segmap_group_size_5699, group_size)
+  let {num_groups_5738 : i64} =
+    calc_num_groups(n_5338, segmap_num_groups_5701, segmap_group_size_5737)
+  let {defunc_0_map_res_5602 : [n_5338][m_5339]i64} =
+    if <equiv> intra_suff_and_fits_5659
+    then {
+      let {defunc_0_map_res_5660 : [n_5338][m_5339]i64} =
+        segmap(group; ; groups=n_5338; groupsize=m_5339)
+        (gtid_5661 < n_5338) (~phys_group_id_5662) : {[m_5339]i64} {
+          let {defunc_0_map_res_5665 : [m_5339]i64} =
+            segmap(thread; ; )
+            (gtid_5666 < m_5339) (~phys_tid_5667) : {i64} {
+              let {eta_p_5668 : i64} =
+                a_5340[gtid_5661, gtid_5666]
+              let {bounds_invalid_upwards_5669 : bool} =
+                slt64(eta_p_5668, 0i64)
+              let {valid_5670 : bool} =
+                not bounds_invalid_upwards_5669
+              let {range_valid_c_5671 : unit} =
+                assert(valid_5670, {"Range ", 0i64 : i64, "..", 1i64 : i64, "..<", eta_p_5668 : i64, " is invalid."}, "/prelude/array.fut:82:3-11")
+              let {result_5782 : [eta_p_5668]i64} =
+                scratch(i64, eta_p_5668)
+              let {discard_5787 : i64,
+                   scan_5677 : [eta_p_5668]i64} =
+                loop {scanacc_5783 : i64,
+                      scanout_5784 : *[eta_p_5668]i64} = {0i64, result_5782}
+                for i_5785:i64 < eta_p_5668 do {
+                  let {lifted_lambda_res_5680 : i64} =
+                    #{range_valid_c_5671}
+                    add64(scanacc_5783, i_5785)
+                  let {lw_dest_5786 : [eta_p_5668]i64} =
+                    scanout_5784 with [i_5785] = lifted_lambda_res_5680
+                  in {lifted_lambda_res_5680, lw_dest_5786}
+                }
+              let {acc0_5686 : i64} =
+                loop {redout_5788 : i64} = {0i64}
+                for i_5789:i64 < eta_p_5668 do {
+                  let {eta_p_5690 : i64} =
+                    scan_5677[i_5789]
+                  let {defunc_0_op_res_5689 : i64} =
+                    add64(eta_p_5690, redout_5788)
+                  in {defunc_0_op_res_5689}
+                }
+              return {returns acc0_5686}
+            }
+          return {returns defunc_0_map_res_5665}
+        }
+      in {defunc_0_map_res_5660}
+    } else {
+      let {a_coalesced_5774 : [n_5338][m_5339]i64} =
+        manifest((1, 0), a_5340)
+      let {defunc_0_map_res_5740 : [n_5338][m_5339]i64} =
+        segmap(thread; virtualise; groups=num_groups_5738; groupsize=segmap_group_size_5737)
+        (gtid_5741 < n_5338) (~phys_tid_5742) : {[m_5339]i64} {
+          let {result_5790 : [m_5339]i64} =
+            scratch(i64, m_5339)
+          let {defunc_0_map_res_5744 : [m_5339]i64} =
+            loop {mapout_5791 : *[m_5339]i64} = {result_5790}
+            for i_5792:i64 < m_5339 do {
+              let {eta_p_5745 : i64} =
+                a_coalesced_5774[gtid_5741, i_5792]
+              let {bounds_invalid_upwards_5746 : bool} =
+                slt64(eta_p_5745, 0i64)
+              let {valid_5747 : bool} =
+                not bounds_invalid_upwards_5746
+              let {range_valid_c_5748 : unit} =
+                assert(valid_5747, {"Range ", 0i64 : i64, "..", 1i64 : i64, "..<", eta_p_5745 : i64, " is invalid."}, "/prelude/array.fut:82:3-11")
+              let {inpacc_5750 : i64,
+                   defunc_0_f_res_5751 : i64} =
+                loop {inpacc_5753 : i64,
+                      inpacc_5754 : i64} = {0i64, 0i64}
+                for i_5775:i64 < eta_p_5745 do {
+                  let {lifted_lambda_res_5770 : i64} =
+                    #{range_valid_c_5748}
+                    add64(inpacc_5753, i_5775)
+                  let {defunc_0_op_res_5772 : i64} =
+                    add64(inpacc_5754, lifted_lambda_res_5770)
+                  in {lifted_lambda_res_5770, defunc_0_op_res_5772}
+                }
+              let {lw_dest_5793 : [m_5339]i64} =
+                mapout_5791 with [i_5792] = defunc_0_f_res_5751
+              in {lw_dest_5793}
+            }
+          return {returns defunc_0_map_res_5744}
+        }
+      in {defunc_0_map_res_5740}
+    }
+    : {[n_5338][m_5339]i64}
+  in {defunc_0_map_res_5602}
+}
