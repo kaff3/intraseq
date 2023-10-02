@@ -19,7 +19,7 @@ let partition2 [n] (p: u32 -> bool) (arr: [n]u32)
    in (i, scatter res inds arr)
 
 let excl_scan [n] 't (op: t -> t -> t) (ne: t) (arr: [n]t) : [n]t = 
-  [ne] ++ tail (scan op ne arr) :> [n]t
+  [ne] ++ (init (scan op ne arr)) :> [n]t
 
 
 -- e: the number of elements pr. thread
@@ -54,8 +54,6 @@ let step [num_blocks] [num_elems] (e : i64) (digit : u32) (arr : *[num_blocks][n
             in (sh_hist, sh_tile)
         ) |> unzip
     
-    let ghst = transpose g_hist |> flatten
-
     -- global hist scan
     let ghs = transpose g_hist 
               |> flatten
@@ -64,7 +62,7 @@ let step [num_blocks] [num_elems] (e : i64) (digit : u32) (arr : *[num_blocks][n
               |> transpose
 
     -- local hists scan
-    let lhs = #[break] map (\blkid -> excl_scan (+) 0 g_hist[blkid]) num_blocks_iota
+    let lhs = map (\blkid -> excl_scan (+) 0 g_hist[blkid]) num_blocks_iota
     
     -- globalScatterKernel
     let idxs = map (\blkid ->
@@ -75,7 +73,6 @@ let step [num_blocks] [num_elems] (e : i64) (digit : u32) (arr : *[num_blocks][n
             in i64.u32 (g_pos + l_pos)
             ) (iota num_threads)
     ) num_blocks_iota
-    let test = #[break] 2
     in scatter (flatten arr :> [num_blocks*num_elems]u32) (flatten idxs :> [num_blocks*num_elems]i64) (flatten arr_intra :> [num_blocks*num_elems]u32)
       |> unflatten
 
@@ -91,7 +88,7 @@ let step [num_blocks] [num_elems] (e : i64) (digit : u32) (arr : *[num_blocks][n
 
 let main [num_blocks] [num_elems] (arr : *[num_blocks][num_elems]u32) 
           : *[num_blocks][num_elems]u32 =
-    let num_digits = 4
+    let num_digits = 2
     let thread_elems = 1
     in loop arr for i < num_digits do
       step thread_elems (u32.i32 i) arr  
