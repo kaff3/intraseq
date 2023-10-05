@@ -1,0 +1,16 @@
+Up to date
+types {
+  
+}
+
+
+
+entry("main",
+      {a: [][]i64},
+      {*[]i64})
+  entry_main (n_5229 : i64,
+              m_5230 : i64,
+              a_5231 : [n_5229][m_5230]i64)
+  : {*[n_5229]i64} = {
+  {defunc_0_map_res_5399}
+}
