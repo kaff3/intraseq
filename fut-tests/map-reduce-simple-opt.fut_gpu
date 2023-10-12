@@ -17,7 +17,7 @@ entry("main",
     segmap(group; ; groups=n_5154; groupsize=group_size_new_1111)
     (gtid_5218 < n_5154) (~phys_group_id_5219) : {i64} {
       
-      let {mymap_0000 : [group_size_new_1111]i64} =
+      let {my_map_1442 : [group_size_new_1111]i64} =
         segmap(thread; ; )
         (gtid_9999 < group_size_new_1111) (~phys_tid_5220) : {i64} {
           let {c_start_2222 : i64} = mul64(gtid_9999, 4i64)
@@ -45,7 +45,7 @@ entry("main",
           in {defunc_0_op_res_5227})
         : {i64} {
           let {x_5228 : i64} =
-            mymap_0000[gtid_5223]
+            my_map_1442[gtid_5223]
           return {returns x_5228}
         }
 

@@ -12,5 +12,43 @@ entry("main",
               m_5230 : i64,
               a_5231 : [n_5229][m_5230]i64)
   : {*[n_5229]i64} = {
-  {defunc_0_map_res_5399}
+  let {defunc_0_map_res_5399 : [n_5229]i64} =
+    #[incremental_flattening(only_intra)]
+    segmap(group; ; groups=n_5229; groupsize=m_5230)
+    (gtid_5400 < n_5229) (~phys_group_id_5401) : {i64} {
+      let {scan_5408 : [m_5230]i64} =
+        segscan(thread; ; )
+        (gtid_5409 < m_5230) (~phys_tid_5410)
+        ({1i64},
+        ,
+        \ {eta_p_5411 : i64,
+           eta_p_5412 : i64}
+          : {i64} ->
+          let {defunc_0_op_res_5413 : i64} =
+            mul64(eta_p_5411, eta_p_5412)
+          in {defunc_0_op_res_5413})
+        : {i64} {
+          let {x_5414 : i64} =
+            a_5231[gtid_5400, gtid_5409]
+          return {returns x_5414}
+        }
+      let {acc0_5419 : i64} =
+        segred(thread; ; )
+        (gtid_5420 < m_5230) (~phys_tid_5421)
+        ({0i64},
+        ,
+        \ {eta_p_5422 : i64,
+           eta_p_5423 : i64}
+          : {i64} ->
+          let {defunc_0_op_res_5424 : i64} =
+            add64(eta_p_5422, eta_p_5423)
+          in {defunc_0_op_res_5424})
+        : {i64} {
+          let {eta_p_5425 : i64} =
+            scan_5408[gtid_5420]
+          return {returns eta_p_5425}
+        }
+      return {returns acc0_5419}
+    }
+  in {defunc_0_map_res_5399}
 }
