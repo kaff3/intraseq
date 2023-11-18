@@ -13,7 +13,7 @@
 -- compiled random input {[1000][7]i64 } auto output
 -- compiled random input {[1000][8]i64 } auto output
 
-let fun1 [n] [m] (a : [n][m]i64) =
+let main [n] [m] (a : [n][m]i64) =
 	#[incremental_flattening(only_intra)]
 	let res = map (\ a_row -> 
 		let tmp = map (\x -> x+2) a_row
