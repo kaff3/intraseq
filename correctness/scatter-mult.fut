@@ -13,8 +13,12 @@
 -- compiled random input {[1000][7]i16 [1000][7]i64 [1000][7]i16} auto output
 -- compiled random input {[1000][8]i16 [1000][8]i64 [1000][8]i16} auto output
 
-let main [n] [m] (dss: [n][m]i16) (iss: [n][m]i64) (vss: [n][m]i16) = 
+let main [n] [m] (dss: [n][m]i16) (vss: [n][m]i16) = 
 	#[incremental_flattening(only_intra)]
-	map3 (\ ds is vs ->
-		scatter (copy ds) is vs
-		) dss iss vss
+	map2 (\ ds vs ->
+    let is = iota m 
+    let vs' = scan (\x acc -> x + acc) 0 vs
+		in scatter (copy ds) is vs'
+		) dss vss
+	
+
