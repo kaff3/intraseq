@@ -32,11 +32,14 @@ let badd [n] (as : [n]u32) (bs : [n]u32) : [n]u32 =
   in  imap2 (iota n) pres
         (\ i r -> r + u32.bool (i > 0 && ( (#[unsafe] carries[i-1]) & 1u8 == 1u8)) )
 
--- Reduce with vectorised multiplication: performance
+-- Big-Integer Addition: performance
 -- ==
--- entry: main poly
--- compiled random input { [1000000][64]u32  [1000000][64]u32 }
--- compiled random input { [60000][1024]u32  [60000][1024]u32 }
+-- entry: main poly 
+-- compiled random input { [65536][2048]u32     [65536][2048]u32 }
+-- compiled random input { [131072][1024]u32    [131072][1024]u32 }
+-- compiled random input { [262144][512]u32     [262144][512]u32 }
+-- compiled random input { [524288][256]u32     [524288][256]u32 }
+-- compiled random input { [1048576][128]u32    [1048576][128]u32 }
   
 -- computes one batched multiplication: a*b
 entry main [m][n] (ass: [m][n]u32) (bss: [m][n]u32) : [m][n]u32 =
