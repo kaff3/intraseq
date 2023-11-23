@@ -1,0 +1,55 @@
+types {
+  
+}
+
+
+
+entry("main",
+      {a: [][]i64},
+      {*[]i64})
+  entry_main (n_5154 : i64,
+              m_5155 : i64,
+              a_5156 : [n_5154][m_5155]i64)
+  : {*[n_5154]i64} = {
+  let {group_size_new_1111 : i64} = sdiv64(m_5155, 4i64)
+  let {defunc_0_map_res_5217 : [n_5154]i64} =
+    #[incremental_flattening(only_intra)]
+    segmap(group; ; groups=n_5154; groupsize=group_size_new_1111)
+    (gtid_5218 < n_5154) (~phys_group_id_5219) : {i64} {
+      
+      let {my_map_1442 : [group_size_new_1111]i64} =
+        segmap(thread; ; )
+        (gtid_9999 < group_size_new_1111) (~phys_tid_5220) : {i64} {
+          let {c_start_2222 : i64} = mul64(gtid_9999, 4i64)
+          let {loop_3333 : i64} = 
+            loop {v_4444 : i64} = {0i64}
+            for i_5555:i64 < 4i64 do {
+              let {slice_6666 : i64} = add64(c_start_2222, i_5555)
+              let {ele_7777 : i64} = a_5156[gtid_5218, slice_6666]
+              let {loop_res_8888 : i64} = add64(v_4444, ele_7777)
+              in {loop_res_8888}
+            }
+          return {returns loop_3333}
+        }
+
+      let {defunc_0_reduce_res_5222 : i64} =
+        segred(thread; ; )
+        (gtid_5223 < group_size_new_1111) (~phys_tid_5224)
+        ({0i64},
+        ,
+        \ {eta_p_5225 : i64,
+           eta_p_5226 : i64}
+          : {i64} ->
+          let {defunc_0_op_res_5227 : i64} =
+            add64(eta_p_5225, eta_p_5226)
+          in {defunc_0_op_res_5227})
+        : {i64} {
+          let {x_5228 : i64} =
+            my_map_1442[gtid_5223]
+          return {returns x_5228}
+        }
+
+      return {returns defunc_0_reduce_res_5222}
+    }
+  in {defunc_0_map_res_5217}
+}

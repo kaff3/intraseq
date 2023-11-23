@@ -9,6 +9,8 @@ let imap as f = map f as
 let step [num_blocks] [num_elems] (num_threads : i64) (e : i64) (digit : u32) 
          (arr : *[num_blocks][num_elems]u32) : *[num_blocks][]u32 =
 
+    let num_threads_iota = iota num_threads
+
     -- rankkernel
     let arr = imap (iota num_blocks)
     ( \ blkid ->
@@ -20,12 +22,11 @@ let step [num_blocks] [num_elems] (num_threads : i64) (e : i64) (digit : u32)
         let sh_tile = arr[blkid]
 
         in loop sh_tile for k < b do
-
             -- Compute indices used for scatter
             
             -- sh_hist_bit is a collective histogram over the amount of bits set and unset 
             -- in each chunk
-            let sh_hist_bit = imap (iota num_threads)
+            let sh_hist_bit = imap (num_threads_iota)
             ( \ tid ->
                 -- the elements the thread should work on
                 let chunk = sh_tile[tid*e : (tid+1)*e]
@@ -51,25 +52,35 @@ let step [num_blocks] [num_elems] (num_threads : i64) (e : i64) (digit : u32)
 
             -- Now each thread can use the now scanned histogram to compute block local
             -- indices for all of its elements
-            let idxs = imap (iota num_threads)
-            (\ tid ->
-                let chunk = sh_tile[tid*e : (tid+1)*e]
-                let hist = sh_hist_bit[tid]
+            -- let idxs = imap (num_threads_iota)
+            let tile_update = copy sh_tile : *[num_elems]u32
+            let _ = imap (num_threads_iota)
+                (\ tid ->
+                    let chunk = sh_tile[tid*e : (tid+1)*e] :> [e]u32
+                    let hist = sh_hist_bit[tid]
 
-                let (idxs, _) =
-                    loop (idxs, (b0,b1)) = (replicate e 0i64, hist) for i < e do
-                        let elem = chunk[i]
-                        let bit = u32.get_bit k elem
-                        in if bit == 0 then 
-                            (idxs with [i] = b0, (b0+1, b1))
-                        else
-                            (idxs with [i] = b1, (b0, b1+1))
-                in idxs
-            )
-            |> flatten :> [num_elems]i64
+                    let (idxs, _) =
+                        loop (idxs, (b0,b1)) = (replicate e 0i64, hist) for i < e do
+                            let elem = chunk[i]
+                            let bit = u32.get_bit k elem
+                            in if bit == 0 then 
+                                (idxs with [i] = b0, (b0+1, b1))
+                            else
+                                (idxs with [i] = b1, (b0, b1+1))
+                    -- in idxs
+                     
+                    let tile_update = loop tile_update for i < e do
+                        let idx = idxs[i]
+                        let test = #[break] 2 
+                        in tile_update with [idx] = chunk[i]
+                    in 0
 
-            in scatter (copy sh_tile) idxs sh_tile
+                )
+
+            in tile_update
+            -- in scatter (copy sh_tile) idxs sh_tile
     )
+
 
     in arr 
 

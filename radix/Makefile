@@ -9,7 +9,7 @@ radix: dirs main.cu
 	nvcc main.cu -o bin/radix
 
 radix-validate: dirs main.cu
-	nvcc main.cu -DRADIX_VALIDATE -o bin/radix-validate
+	nvcc main.cu -DDO_VALIDATE -o bin/radix-validate
 
 fut-bench: radix-fut.fut
 	futhark bench --backend=cuda radix-fut.fut
