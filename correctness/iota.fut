@@ -15,5 +15,6 @@
 
 let main [n] [m] (xss: [n][m]i16) = 
 	#[incremental_flattening(only_intra)]
+  #[seq_factor(4)]
 	iota n
 

@@ -15,6 +15,7 @@
 
 let main [n] [m] (dss: [n][m]i16) (iss: [n][m]i64) (vss: [n][m]i16) = 
 	#[incremental_flattening(only_intra)]
+  #[seq_factor(4)]
 	map3 (\ ds is vs ->
 		scatter (copy ds) is vs
 		) dss iss vss

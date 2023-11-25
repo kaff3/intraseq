@@ -15,6 +15,7 @@
 
 let main [n] [m] (a : [n][m]i64) =
 	#[incremental_flattening(only_intra)]
+  #[seq_factor(4)]
 	let res = map (\ a_row -> 
 		let tmp = map (\x -> x+2) a_row
 		let r2 = scan (*) 1 tmp

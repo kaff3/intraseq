@@ -15,6 +15,7 @@
 
 let main [n] [m] (dss: [n][m]i16) (vss: [n][m]i16) = 
 	#[incremental_flattening(only_intra)]
+  #[seq_factor(4)]
 	map2 (\ ds vs ->
     let is = iota m 
     let vs' = scan (\x acc -> x + acc) 0 vs

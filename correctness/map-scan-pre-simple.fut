@@ -14,6 +14,7 @@
 -- compiled random input {[1000][8]i64 [8]i64} auto output
 let main [n] [m] (a : [n][m]i64) (b : [m]i64)  =
   #[incremental_flattening(only_intra)]
+  #[seq_factor(4)]
   let res = map (\ a_row ->
     let tmp = map (\x -> x / 11) a_row
     let tmp1 = map2 (\x y -> x * y) tmp b

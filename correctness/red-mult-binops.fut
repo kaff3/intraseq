@@ -15,6 +15,7 @@
 
 let main [n] [m] (a: [m][n]f32) = 
 	#[incremental_flattening(only_intra)]
+  #[seq_factor(4)]
 	let res = map (\ row ->
 		let row_scanned = scan (+) 0 row
     

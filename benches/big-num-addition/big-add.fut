@@ -5,9 +5,14 @@
 ---     https://futhark-lang.org/student-projects/dpp21-mpint.pdf
 -----------------------------------------------------------------------------
 
-let imap  as f = map f as
-let imap2 as bs f = map2 f as bs
-
+let imap  as f = 
+  #[incremental_flattening(only_intra)]
+  #[seq_factor(4)]
+  map f as
+let imap2 as bs f = 
+  #[incremental_flattening(only_intra)]
+  #[seq_factor(4)]
+  map2 f as bs
 ------------------------------------------------------------------------
 ---- prefix sum (scan) operator to propagate the carry
 -- let add_op (ov1 : bool, mx1: bool) (ov2 : bool, mx2: bool) : (bool, bool) =
@@ -22,6 +27,8 @@ let badd_op (c1 : u8) (c2: u8) : u8 =
   
 let badd [n] (as : [n]u32) (bs : [n]u32) : [n]u32 =
   let (pres, cs) = 
+    #[incremental_flattening(only_intra)]
+    #[seq_factor(4)]
     imap2 as bs
       (\ a b -> let s = a + b 
                 let b = u8.bool (s < a)
@@ -29,7 +36,10 @@ let badd [n] (as : [n]u32) (bs : [n]u32) : [n]u32 =
                 in  (s, b)
       ) |> unzip
   let carries = scan badd_op 2u8 cs
-  in  imap2 (iota n) pres
+  in  
+    #[incremental_flattening(only_intra)]
+    #[seq_factor(4)]
+    imap2 (iota n) pres
         (\ i r -> r + u32.bool (i > 0 && ( (#[unsafe] carries[i-1]) & 1u8 == 1u8)) )
 
 -- Big-Integer Addition: performance
@@ -43,12 +53,26 @@ let badd [n] (as : [n]u32) (bs : [n]u32) : [n]u32 =
   
 -- computes one batched multiplication: a*b
 entry main [m][n] (ass: [m][n]u32) (bss: [m][n]u32) : [m][n]u32 =
+  #[incremental_flattening(only_intra)]
+  #[seq_factor(4)]
   map2 badd ass bss 
   
 -- computes: 2*a + 4*b
 entry poly [m][n] (ass: [m][n]u32) (bss: [m][n]u32) : [m][n]u32 =
-  let a2s   = map2 badd ass ass
-  let b2s   = map2 badd bss bss
-  let b4s   = map2 badd b2s b2s
-  let a2b4s = map2 badd a2s b4s
+  let a2s   = 
+    #[incremental_flattening(only_intra)]
+    #[seq_factor(4)]
+    map2 badd ass ass
+  let b2s   = 
+    #[incremental_flattening(only_intra)]
+    #[seq_factor(4)]
+    map2 badd bss bss
+  let b4s   = 
+    #[incremental_flattening(only_intra)]
+    #[seq_factor(4)]
+    map2 badd b2s b2s
+  let a2b4s = 
+    #[incremental_flattening(only_intra)]
+    #[seq_factor(4)]
+    map2 badd a2s b4s
   in  a2b4s
