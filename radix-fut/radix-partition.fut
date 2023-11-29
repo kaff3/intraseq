@@ -37,7 +37,7 @@ let hist_op_red (accum: [16]u32) (elms: [16]u32) : [16]u32 =
 
 let step [n] [m] (digit : u32) (arr : *[n][m]u32) : *[n][m]u32 =
 
-    let b : u32 = trace 4
+    let b : u32 = 4
 
     -- Rank Kernel
     let (arr', g_hist) = 
