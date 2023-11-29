@@ -41,6 +41,8 @@ let step [n] [m] (digit : u32) (arr : *[n][m]u32) : *[n][m]u32 =
 
     -- Rank Kernel
     let (arr', g_hist) = 
+        #[incremental_flattening(only_intra)]
+        #[seq_factor(4)]
         map ( \ row -> 
             let row' = loop row for j < (i64.u32 b) do
                 let (_, row') = partition2 (\ elm ->
@@ -63,17 +65,23 @@ let step [n] [m] (digit : u32) (arr : *[n][m]u32) : *[n][m]u32 =
                     |> excl_scan (+) 0
                     |> unflatten
                     |> transpose
-    let l_hist = map (\ hist -> excl_scan (+) 0 hist) g_hist
+    let l_hist = 
+        #[incremental_flattening(only_intra)]
+        #[seq_factor(4)]
+        map (\ hist -> excl_scan (+) 0 hist) g_hist
 
     -- Scatter Kernel
-    let idxs = map3 (\ g_hist l_hist row ->
-        map2 ( \ elm i ->
-            let d = (elm >> (digit*4)) & 0xF
-            let g_pos = i64.u32 g_hist[i32.u32 d]
-            let l_pos = i - (i64.u32 l_hist[i32.u32 d])
-            in g_pos + l_pos
-        ) row (iota m)
-    ) g_hist' l_hist arr'
+    let idxs =
+        #[incremental_flattening(only_intra)]
+        #[seq_factor(4)]
+         map3 (\ g_hist l_hist row ->
+            map2 ( \ elm i ->
+                let d = (elm >> (digit*4)) & 0xF
+                let g_pos = i64.u32 g_hist[i32.u32 d]
+                let l_pos = i - (i64.u32 l_hist[i32.u32 d])
+                in g_pos + l_pos
+            ) row (iota m)
+        ) g_hist' l_hist arr'
 
     in scatter (flatten arr :> [n*m]u32)
                (flatten idxs :> [n*m]i64)
@@ -83,7 +91,8 @@ let step [n] [m] (digit : u32) (arr : *[n][m]u32) : *[n][m]u32 =
 
 -- = 
 -- entry: main
--- compiled random input {[2][10]u32}
+-- compiled random input {[100000][1024]i64} auto output
+-- compiled random input {[100000][1023]i64} auto output
 let main [n] [m] (arr : *[n][m]u32) : *[n][m]u32 =
     let num_digits = 8
     in loop arr for i < num_digits do
