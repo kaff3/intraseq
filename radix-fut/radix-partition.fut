@@ -1,4 +1,8 @@
-let cmap as f = map f as
+let imap as f = 
+    #[incremental_flattening(only_intra)]
+    #[seq_factor(4)]
+    map f as
+
 
 let partition2 [n] (p: u32 -> bool) (arr: [n]u32) 
                 : (i64, *[n]u32) =
@@ -22,73 +26,65 @@ let excl_scan [n] 't (op: t -> t -> t) (ne: t) (arr: [n]t) : [n]t =
   [ne] ++ (init (scan op ne arr)) :> [n]t
 
 
--- e: the number of elements pr. thread
--- ==
--- entry: step
--- compiled random input {22i64 1i64 1024i64 [22528]u32}
--- compiled input {0u32 [[3,2,1],[5,4,6]]u32}
-let step [num_blocks] [num_elems] (e : i64) (digit : u32) (arr : *[num_blocks][num_elems]u32)
-          : *[num_blocks][num_elems]u32 =
-    let num_threads = num_elems / e
-    let b = 4
-    let num_blocks_iota = iota num_blocks
+--let hist_op_map (elm: u32) : [16]u32 = 
+--    let idx = (elm >> (digit*4)) & 0xF
+--    in (replicate 16 0) with [idx] = 1    
 
-    -- rankKernel
-    let (g_hist, arr_intra) = cmap (num_blocks_iota)
-        (\blkid ->
-            let sh_hist = replicate (2**b) 0u32
-            -- Load tile
-            let sh_tile = arr[blkid]
-            
-            let sh_tile = loop sh_tile for j < b do 
-                let (_, arr) = partition2 (\e -> 
-                    if (e >> (digit*4 + (u32.i64 j))) & 1 == 0 then true else false
-                ) sh_tile
-                in arr
-        
-            let sh_hist = loop sh_hist for i < num_threads do
-                let ele = sh_tile[i]
-                let dig = i64.u32 ((ele >> (digit * 4)) & 0xF)
-                in sh_hist with [dig] = sh_hist[dig] + 1
-
-            in (sh_hist, sh_tile)
-        ) |> unzip
+let hist_op_red (accum: [16]u32) (elms: [16]u32) : [16]u32 = 
+    map2 (\ x y -> x + y) accum elms
     
-    -- global hist scan
-    let ghs = transpose g_hist 
-              |> flatten
-              |> excl_scan (+) 0 
-              |> unflatten
-              |> transpose
-
-    -- local hists scan
-    let lhs = map (\blkid -> excl_scan (+) 0 g_hist[blkid]) num_blocks_iota
-    
-    -- globalScatterKernel
-    let idxs = map (\blkid ->
-        map (\tid ->
-            let dig = i64.u32 ((arr_intra[blkid][tid] >> (digit * 4)) & 0xF) 
-            let g_pos = ghs[blkid][dig] 
-            let l_pos = u32.i64 tid - lhs[blkid][dig]
-            in i64.u32 (g_pos + l_pos)
-            ) (iota num_threads)
-    ) num_blocks_iota
-    in scatter (flatten arr :> [num_blocks*num_elems]u32) (flatten idxs :> [num_blocks*num_elems]i64) (flatten arr_intra :> [num_blocks*num_elems]u32)
-      |> unflatten
 
 
-            -- T full_val = d_in[index];
-            -- T val = GET_DIGIT(full_val, digit*B, mask);
-            
-            -- // global_pos: position in global array where this block should place its values with the found digits
-            -- // local_pos:  position relative to other values with same digit in this block
-            -- unsigned int global_pos = s_histogram_global_scan[val];
-            -- unsigned int local_pos = loc_idx - s_histogram[val];  
-            -- unsigned int pos = global_pos + local_pos;
+let step [n] [m] (digit : u32) (arr : *[n][m]u32) : *[n][m]u32 =
 
-let main [num_blocks] [num_elems] (arr : *[num_blocks][num_elems]u32) 
-          : *[num_blocks][num_elems]u32 =
-    let num_digits = 2
-    let thread_elems = 1
+    let b : u32 = trace 4
+
+    -- Rank Kernel
+    let (arr', g_hist) = 
+        map ( \ row -> 
+            let row' = loop row for j < (i64.u32 b) do
+                let (_, row') = partition2 (\ elm ->
+                    if (elm >> (digit*b + (u32.i64 j))) & 1 == 0 then true else false
+                ) row
+                in row'
+
+            let hist_tmp = map ( \ elm ->
+                let idx = (elm >> (digit*4)) & 0xF |> i64.u32
+                in (replicate 16 0) with [idx] = 1    
+            ) row'
+            let hist = reduce hist_op_red (replicate 16 0) hist_tmp
+            in (row', hist)
+    ) arr
+    |> unzip
+
+    -- Hist Kernel
+    let g_hist' = transpose g_hist
+                    |> flatten
+                    |> excl_scan (+) 0
+                    |> unflatten
+                    |> transpose
+    let l_hist = map (\ hist -> excl_scan (+) 0 hist) g_hist
+
+    -- Scatter Kernel
+    let idxs = map3 (\ g_hist l_hist row ->
+        map2 ( \ elm i ->
+            let d = (elm >> (digit*4)) & 0xF
+            let g_pos = i64.u32 g_hist[i32.u32 d]
+            let l_pos = i - (i64.u32 l_hist[i32.u32 d])
+            in g_pos + l_pos
+        ) row (iota m)
+    ) g_hist' l_hist arr'
+
+    in scatter (flatten arr :> [n*m]u32)
+               (flatten idxs :> [n*m]i64)
+               (flatten arr' :> [n*m]u32)
+        |> unflatten
+
+
+-- = 
+-- entry: main
+-- compiled random input {[2][10]u32}
+let main [n] [m] (arr : *[n][m]u32) : *[n][m]u32 =
+    let num_digits = 8
     in loop arr for i < num_digits do
-      step thread_elems (u32.i32 i) arr  
+      step (u32.i32 i) arr  
