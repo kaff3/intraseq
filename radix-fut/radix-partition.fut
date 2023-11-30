@@ -1,6 +1,6 @@
 let imap as f = 
     #[incremental_flattening(only_intra)]
-    #[seq_factor(4)]
+    -- #[seq_factor(4)]
     map f as
 
 
@@ -83,16 +83,16 @@ let step [n] [m] (digit : u32) (arr : *[n][m]u32) : *[n][m]u32 =
             ) row (iota m)
         ) g_hist' l_hist arr'
 
-    in scatter (flatten arr :> [n*m]u32)
+    in 
+      scatter (flatten arr :> [n*m]u32)
                (flatten idxs :> [n*m]i64)
                (flatten arr' :> [n*m]u32)
         |> unflatten
 
 
--- = 
+-- ==
 -- entry: main
--- compiled random input {[100000][1024]i64} auto output
--- compiled random input {[100000][1023]i64} auto output
+-- compiled random input {[1000][1024]u32} auto output
 let main [n] [m] (arr : *[n][m]u32) : *[n][m]u32 =
     let num_digits = 8
     in loop arr for i < num_digits do
