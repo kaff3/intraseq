@@ -1,5 +1,6 @@
 let cmap as f = 
     #[incremental_flattening(only_intra)]
+    #[seq_factor(4)]
     map f as
 
 let partition2 [n] (p: u32 -> bool) (arr: [n]u32) 
@@ -24,11 +25,6 @@ let excl_scan [n] 't (op: t -> t -> t) (ne: t) (arr: [n]t) : [n]t =
   [ne] ++ (init (scan op ne arr)) :> [n]t
 
 
--- e: the number of elements pr. thread
--- ==
--- entry: step
--- compiled random input {22i64 1i64 1024i64 [22528]u32}
--- compiled input {0u32 [[3,2,1],[5,4,6]]u32}
 let step [num_blocks] [num_elems] (e : i64) (digit : u32) (arr : *[num_blocks][num_elems]u32)
           : *[num_blocks][num_elems]u32 =
     let num_threads = num_elems / e
@@ -64,33 +60,28 @@ let step [num_blocks] [num_elems] (e : i64) (digit : u32) (arr : *[num_blocks][n
               |> transpose
 
     -- local hists scan
-    let lhs = map (\blkid -> excl_scan (+) 0 g_hist[blkid]) num_blocks_iota
+    let lhs = cmap num_blocks_iota (\blkid -> excl_scan (+) 0 g_hist[blkid]) 
     
     -- globalScatterKernel
-    let idxs = map (\blkid ->
+    let idxs = cmap num_blocks_iota (\blkid ->
         map (\tid ->
             let dig = i64.u32 ((arr_intra[blkid][tid] >> (digit * 4)) & 0xF) 
             let g_pos = ghs[blkid][dig] 
             let l_pos = u32.i64 tid - lhs[blkid][dig]
             in i64.u32 (g_pos + l_pos)
             ) (iota num_threads)
-    ) num_blocks_iota
+    ) 
     in scatter (flatten arr :> [num_blocks*num_elems]u32) (flatten idxs :> [num_blocks*num_elems]i64) (flatten arr_intra :> [num_blocks*num_elems]u32)
       |> unflatten
 
 
-            -- T full_val = d_in[index];
-            -- T val = GET_DIGIT(full_val, digit*B, mask);
-            
-            -- // global_pos: position in global array where this block should place its values with the found digits
-            -- // local_pos:  position relative to other values with same digit in this block
-            -- unsigned int global_pos = s_histogram_global_scan[val];
-            -- unsigned int local_pos = loc_idx - s_histogram[val];  
-            -- unsigned int pos = global_pos + local_pos;
 
+-- ==
+-- entry: main
+-- compiled random input {[100000][1024]u32} auto output
 let main [num_blocks] [num_elems] (arr : *[num_blocks][num_elems]u32) 
           : *[num_blocks][num_elems]u32 =
-    let num_digits = 2
+    let num_digits = 8
     let thread_elems = 1
     in loop arr for i < num_digits do
       step thread_elems (u32.i32 i) arr  
