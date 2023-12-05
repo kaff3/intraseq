@@ -1,0 +1,25 @@
+-- ==
+-- entry: main
+-- compiled random input {[1000][1024]i64} auto output
+-- compiled random input {[1000][1023]i64} auto output
+-- compiled random input {[1000][1022]i64} auto output
+-- compiled random input {[1000][1021]i64} auto output
+-- compiled random input {[1000][1]i64} auto output
+-- compiled random input {[1000][2]i64 } auto output
+-- compiled random input {[1000][3]i64 } auto output
+-- compiled random input {[1000][4]i64 } auto output
+-- compiled random input {[1000][5]i64 } auto output
+-- compiled random input {[1000][6]i64 } auto output
+-- compiled random input {[1000][7]i64 } auto output
+-- compiled random input {[1000][8]i64 } auto output
+
+let main [n] [m] (a : [n][m]i64) =
+  #[incremental_flattening(only_intra)]
+  #[seq_factor(4)]
+  map (\ a_row ->
+     let tmp = map2 (\x y -> x + y) a_row (iota m)
+     let tmp1 =  reduce (\x a -> x * 3) 1 (iota m)
+     in (tmp, tmp1)
+  ) a |> unzip 
+
+
