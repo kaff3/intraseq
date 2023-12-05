@@ -19,6 +19,6 @@ let seqmap f x =
 -- compiled random input {[1000][8]i16 } auto output
 let main [n] [m] (ass: [n][m]i32) = 
 	let ass' = seqmap (\as -> scan (+) 0 as) ass
-	let bss = transpise ass'
+	let bss = transpose ass'
 	in seqmap (\bs -> reduce (+) 0 bs) bss
 		
