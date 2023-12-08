@@ -1,12 +1,12 @@
-let seqmap f x = 
+
+
+let seqmap2 f x y = 
 	#[incremental_flattening(only_intra)]
 	#[seq_factor(4)]
-	map f x
+	map2 f x y
 
 -- ==
 -- entry: main
--- compiled random input {[2][16]i32} auto output
-
 -- compiled random input {[1000][1024]i32} auto output
 -- compiled random input {[1000][1023]i32} auto output
 -- compiled random input {[1000][1022]i32} auto output
@@ -19,10 +19,11 @@ let seqmap f x =
 -- compiled random input {[1000][6]i32 } auto output
 -- compiled random input {[1000][7]i32 } auto output
 -- compiled random input {[1000][8]i32 } auto output
-let main [n] [m] (ass: [n][m]i32) = 
-	transpose ass
-	
-	--let ass' = seqmap (\as -> scan (+) 0 as) ass
-	--let bss = transpose ass'
-	--in seqmap (\bs -> reduce (+) 0 bs) bss
-		
+let main [n] [m] (ass: [n][m]i32) (bss: [m][n]i32) = 
+	let ass' = transpose ass
+	let bss' = seqmap2 (\as' bs -> 
+		let x = reduce (+) 0 as'
+		let y = reduce (+) 0 bs
+		in (x,y)
+		) ass' bss
+	in unzip bss'		
