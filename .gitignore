@@ -8,3 +8,8 @@
 /bin
 /data
 
+correctness/*
+!correctness/*.fut
+
+bench/*
+!bench/*.fut
