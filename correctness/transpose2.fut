@@ -7,7 +7,6 @@ let seqmap f x  =
 -- ==
 -- entry: main
 -- compiled random input {[1000][1024]i32} auto output
-
 -- compiled random input {[1000][1023]i32} auto output
 -- compiled random input {[1000][1022]i32} auto output
 -- compiled random input {[1000][1021]i32} auto output
