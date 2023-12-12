@@ -4,13 +4,14 @@
 ---     ``Multiple-precision Integer Arithmetic'', DPP'22 final project,
 ---     https://futhark-lang.org/student-projects/dpp21-mpint.pdf
 -----------------------------------------------------------------------------
+let imap2 as bs f = map2 f as bs
 
-let imap2Seq as bs f = 
+let imap2Seq f as bs = 
   #[incremental_flattening(only_intra)]
   #[seq_factor(4)]
   map2 f as bs
 
-let imap2Org as bs f = 
+let imap2Org f as bs = 
   #[incremental_flattening(only_intra)]
   map2 f as bs
 ------------------------------------------------------------------------
