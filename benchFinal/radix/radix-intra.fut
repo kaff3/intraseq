@@ -59,6 +59,7 @@ let stepOrg [num_blocks] [num_elems] (digit : u32) (arr : *[num_blocks][num_elem
 -- Intra-group radix sort: performance
 -- ==
 -- entry: mainSeq 
+-- compiled random input { [32768][4096]u32     [32768][4096]u32 }
 -- compiled random input { [65536][2048]u32     [65536][2048]u32 }
 -- compiled random input { [131072][1024]u32    [131072][1024]u32 }
 -- compiled random input { [262144][512]u32     [262144][512]u32 }
@@ -73,13 +74,13 @@ let stepOrg [num_blocks] [num_elems] (digit : u32) (arr : *[num_blocks][num_elem
 -- compiled random input { [524288][256]u32     [524288][256]u32 }
 -- compiled random input { [1048576][128]u32    [1048576][128]u32 }
   
-let mainSeq [num_blocks] [num_elems] (arr : *[num_blocks][num_elems]u32) 
+entry mainSeq [num_blocks] [num_elems] (arr : *[num_blocks][num_elems]u32) 
           : *[num_blocks][num_elems]u32 =
     let num_digits = 8
     in loop arr for i < num_digits do
       stepSeq (u32.i32 i) arr
 
-let mainOrg [num_blocks] [num_elems] (arr : *[num_blocks][num_elems]u32) 
+entry mainOrg [num_blocks] [num_elems] (arr : *[num_blocks][num_elems]u32) 
           : *[num_blocks][num_elems]u32 =
     let num_digits = 8
     in loop arr for i < num_digits do

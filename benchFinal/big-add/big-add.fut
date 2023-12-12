@@ -41,6 +41,7 @@ let badd [n] (as : [n]u32) (bs : [n]u32) : [n]u32 =
 -- Big-Integer Addition: performance
 -- ==
 -- entry: mainSeq 
+-- compiled random input { [32768][4096]u32     [32768][4096]u32 }
 -- compiled random input { [65536][2048]u32     [65536][2048]u32 }
 -- compiled random input { [131072][1024]u32    [131072][1024]u32 }
 -- compiled random input { [262144][512]u32     [262144][512]u32 }
