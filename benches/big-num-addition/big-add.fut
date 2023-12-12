@@ -56,23 +56,3 @@ entry main [m][n] (ass: [m][n]u32) (bss: [m][n]u32) : [m][n]u32 =
   #[incremental_flattening(only_intra)]
   #[seq_factor(4)]
   map2 badd ass bss 
-  
--- computes: 2*a + 4*b
-entry poly [m][n] (ass: [m][n]u32) (bss: [m][n]u32) : [m][n]u32 =
-  let a2s   = 
-    #[incremental_flattening(only_intra)]
-    #[seq_factor(4)]
-    map2 badd ass ass
-  let b2s   = 
-    #[incremental_flattening(only_intra)]
-    #[seq_factor(4)]
-    map2 badd bss bss
-  let b4s   = 
-    #[incremental_flattening(only_intra)]
-    #[seq_factor(4)]
-    map2 badd b2s b2s
-  let a2b4s = 
-    #[incremental_flattening(only_intra)]
-    #[seq_factor(4)]
-    map2 badd a2s b4s
-  in  a2b4s
