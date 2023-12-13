@@ -17,6 +17,7 @@ entry testBlocks [n] [m] (a : [n][m]u32) = main a
 
 -- ==
 -- entry: testThreads
+-- compiled random input { [32768][4096]u32 }
 -- compiled random input { [65536][2048]u32 }
 -- compiled random input { [131072][1024]u32 }
 -- compiled random input { [262144][512]u32 }

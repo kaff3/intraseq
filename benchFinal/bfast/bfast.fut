@@ -1,3 +1,12 @@
+let imapOrg f as = 
+  #[incremental_flattening(only_intra)]
+  map f as
+
+let imapSeq f as = 
+  #[incremental_flattening(only_intra)]
+  #[seq_factor(4)]
+  map f as
+
 -- BFAST-irregular: 
 -- ==
 -- entry: mainSeq mainOrg
@@ -160,8 +169,6 @@ entry mainSeq [m][N] (trend: i32) (k: i32) (n: i32) (freq: f32)
   -- 5. filter etc.                          --
   ---------------------------------------------
   let (Nss, y_errors, val_indss) = ( opaque <| unzip3 <|
-    #[incremental_flattening(only_intra)]
-    #[seq_factor(4)]
     map2 (\y y_pred ->
             let y_error_all = zip y y_pred |>
                 map (\(ye,yep) -> if !(f32.isnan ye) 
@@ -175,8 +182,6 @@ entry mainSeq [m][N] (trend: i32) (k: i32) (n: i32) (freq: f32)
   -- 6. ns and sigma (can be fused with above)  --
   ------------------------------------------------
   let (hs, nss, sigmas) = opaque <| unzip3 <|
-    #[incremental_flattening(only_intra)]
-    #[seq_factor(4)]
     map2 (\yh y_error ->
             let ns    = map (\ye -> if !(f32.isnan ye) then 1i32 else 0i32) yh
                         |> reduce (+) 0i32
@@ -193,8 +198,6 @@ entry mainSeq [m][N] (trend: i32) (k: i32) (n: i32) (freq: f32)
   ---------------------------------------------
   let hmax = reduce_comm (i32.max) 0 hs |> i64.i32
   let MO_fsts = zip3 y_errors nss hs |>
-    #[incremental_flattening(only_intra)]
-    #[seq_factor(4)]
     map (\(y_error, ns, h) -> 
             map i32.i64 (iota hmax)
             |> map (\i -> if i < h then y_error[i + ns-h+1] else 0.0)
@@ -211,9 +214,7 @@ entry mainSeq [m][N] (trend: i32) (k: i32) (n: i32) (freq: f32)
   -- 8. moving sums computation:             --
   ---------------------------------------------
   let (breaks, means) = zip (zip4 Nss nss sigmas hs) (zip3 MO_fsts y_errors val_indss) |>
-    #[incremental_flattening(only_intra)]
-    #[seq_factor(4)]
-    map (\ ( (Ns,ns,sigma, h), (MO_fst,y_error,val_inds) ) ->
+    imapSeq (\ ( (Ns,ns,sigma, h), (MO_fst,y_error,val_inds) ) ->
             let MO = map i32.i64 (indices BOUND)
                   |> map (\j -> if j >= Ns-ns then 0.0
                                 else if j == 0 then MO_fst
@@ -341,8 +342,7 @@ entry mainOrg [m][N] (trend: i32) (k: i32) (n: i32) (freq: f32)
   ---------------------------------------------
   let hmax = reduce_comm (i32.max) 0 hs |> i64.i32
   let MO_fsts = zip3 y_errors nss hs |>
-    #[incremental_flattening(only_intra)]
-    map (\(y_error, ns, h) -> 
+    imapOrg (\(y_error, ns, h) -> 
             map i32.i64 (iota hmax)
             |> map (\i -> if i < h then y_error[i + ns-h+1] else 0.0)
             |> reduce (+) 0.0 
@@ -358,8 +358,8 @@ entry mainOrg [m][N] (trend: i32) (k: i32) (n: i32) (freq: f32)
   -- 8. moving sums computation:             --
   ---------------------------------------------
   let (breaks, means) = zip (zip4 Nss nss sigmas hs) (zip3 MO_fsts y_errors val_indss) |>
-    #[incremental_flattening(only_intra)]
-    map (\ ( (Ns,ns,sigma, h), (MO_fst,y_error,val_inds) ) ->
+    imapOrg (\ ( (Ns,ns,sigma, h), (MO_fst,y_error,val_inds) ) ->
+-- compiled random input { [32768][4096]u32     [32768][4096]u32 }
             let MO = map i32.i64 (indices BOUND)
                   |> map (\j -> if j >= Ns-ns then 0.0
                                 else if j == 0 then MO_fst

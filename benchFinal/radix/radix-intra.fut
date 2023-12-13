@@ -59,8 +59,6 @@ let stepOrg [num_blocks] [num_elems] (digit : u32) (arr : *[num_blocks][num_elem
 -- Intra-group radix sort: performance
 -- ==
 -- entry: mainSeq 
--- compiled random input { [32768][4096]u32 }
--- compiled random input { [65536][2048]u32 }
 -- compiled random input { [131072][1024]u32 } 
 -- compiled random input { [262144][512]u32  }
 -- compiled random input { [524288][256]u32  }
