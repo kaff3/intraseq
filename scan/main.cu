@@ -77,7 +77,7 @@ void intraBlockScanBench(const unsigned int block_size,
     #endif
 
     // Print csv outpu
-    unsigned int seq_spdup = t1.Get() / t2.Get();
+    double seq_spdup = static_cast<double>(t1.Get() / t2.Get());
     printf("%u, %.2f, %.2f, %.2f\n", TEST_SIZE, t1.Get(), t2.Get(), seq_spdup);
 
 
