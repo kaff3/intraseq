@@ -153,10 +153,10 @@ int main(int argc, char* argv[]) {
     test<unsigned int, 4, 1, 256>(size, gpu_runs); 
     test<unsigned int, 4, 4, 256>(size, gpu_runs); 
     test<unsigned int, 4, 8, 256>(size, gpu_runs); 
-    test<unsigned int, 4, 22, 256>(size, gpu_runs); 
+    test<unsigned int, 4, 23, 256>(size, gpu_runs); 
 
     #ifndef DO_VALIDATE
-        printf("=====================================");
+        printf("=====================================\n");
         test<unsigned int, 4, 4, 128>(size, gpu_runs); 
         test<unsigned int, 4, 4, 256>(size, gpu_runs); 
         test<unsigned int, 4, 4, 512>(size, gpu_runs); 
