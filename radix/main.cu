@@ -278,9 +278,6 @@ void test(size_t N, int runs) {
     cudaMalloc((void**)&d_hist3, Radix::HistogramStorageSize(N));
     cudaMalloc((void**)&d_temp_storage, Radix::TempStorageSize(N, d_hist1));
 
-    // Radix::AllocateHistograms(d_hist1, d_hist2, d_hist3, N);
-    // Radix::AllocateTempStorage(d_temp_storage, N, d_hist1);
-
     // Initialize array and move to device
     cudaMemcpy(d_in, h_in, alloc_size, cudaMemcpyHostToDevice);
 
@@ -318,21 +315,21 @@ void test(size_t N, int runs) {
         bool valid = true;
         for (size_t k = 0; k < N; k++) {
             if (h_out[k] != h_out_cub[k]) {
-                printf("Validation error at k = %u\n", k);
-                printf("%u != %u\n", h_out[k], h_out_cub[k]);
+                printf("Validation error at k = %lu\n", (unsigned long)k);
+                printf("%lu != %lu\n", (unsigned long)h_out[k], (unsigned long)h_out_cub[k]);
                 valid = false;
                 break;
             }
         }
         if (valid)
-            printf("Valid for N = %u\n", N);
+            printf("Valid for N = %lu\n", (unsigned long)N);
 
         free(h_out_cub);
         cudaFree(d_tmp);
     #endif
 
     #ifndef DO_VALIDATE
-        printf("%u, %.2f\n", N, t1.Get());
+        printf("%lu, %.2f\n", (unsigned long)N, t1.Get());
     #endif
 
     // Free all memory
@@ -357,26 +354,31 @@ int main(int argc, char* argv[]) {
     int gpu_runs = atoi(argv[1]);
 
     std::vector<unsigned int> sizes = {
-        1 << 10,
-        1 << 11,
-        1 << 12,
-        1 << 13,
-        1 << 14,
-        1 << 15,
-        1 << 16,
-        1 << 17,
-        1 << 19,
-        1 << 20,
-        1 << 21,
-        1 << 22,
-        1 << 23,
-        1 << 24,
-        1 << 25,
-        1 << 26,
-        1 << 27,
-        1 << 28,
-        1 << 29,
-        1 << 30,
+        100000,
+        200000,
+        300000,
+        400000,
+        500000
+        // 1 << 10,
+        // 1 << 11,
+        // 1 << 12,
+        // 1 << 13,
+        // 1 << 14,
+        // 1 << 15,
+        // 1 << 16,
+        // 1 << 17,
+        // 1 << 19,
+        // 1 << 20,
+        // 1 << 21,
+        // 1 << 22,
+        // 1 << 23,
+        // 1 << 24,
+        // 1 << 25,
+        // 1 << 26,
+        // 1 << 27,
+        // 1 << 28,
+        // 1 << 29,
+        // 1 << 30,
         // 1 << 31,
         // 1 << 32,
     };
@@ -384,6 +386,11 @@ int main(int argc, char* argv[]) {
     for(int i = 0; i < sizes.size(); i++) {
        test<unsigned int, 4, 4, 256>(sizes[i], gpu_runs); 
     } 
+
+    printf("==================================================\n");
+    for(int i = 0; i < sizes.size(); i++) {
+        test<unsigned int, 4, 4, 1024>(sizes[i], gpu_runs);
+    }
 
 
 
