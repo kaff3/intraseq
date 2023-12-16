@@ -291,23 +291,86 @@ public:
             rankKernel<T, B, E, TS, TILE_ELEMENTS, HISTOGRAM_ELEMENTS>
                 <<<num_blocks, TS>>>(d_in, d_out, N, d_histogram, i, mask);
 
-            // transpose
-            transposeTiled<unsigned int, 32>(d_histogram, d_histogram_transpose, num_blocks, HISTOGRAM_ELEMENTS);
-            // scan
-            cub::DeviceScan::ExclusiveScan(d_tmp_storage, tmp_storage_bytes, d_histogram_transpose, d_histogram_scan, cub::Sum(), 0, (int)HISTOGRAM_ELEMENTS*num_blocks);
-            // transpose
-            transposeTiled<unsigned int, 32>(d_histogram_scan, d_histogram_transpose, HISTOGRAM_ELEMENTS, num_blocks);
-            
-            unsigned int* tmp;
-            tmp = d_histogram_scan;
-            d_histogram_scan = d_histogram_transpose;
-            d_histogram_transpose = tmp;
+            // Uncomment this swap of the rest is enabled
+            T* tmp;
+            tmp = d_in;
+            d_in = d_out;
+            d_out = tmp;
 
-            globalScatterKernel<T, B, E, TS, TILE_ELEMENTS, HISTOGRAM_ELEMENTS>
-                <<<num_blocks, TS>>>(d_out, d_in, N, d_histogram, d_histogram_scan, i, mask);
+
+            
+            // Uncomment below code for a full radix sort.
+            // Note: This will make radix-validate report false errors
+            
+            // // transpose
+            // transposeTiled<unsigned int, 32>(d_histogram, d_histogram_transpose, num_blocks, HISTOGRAM_ELEMENTS);
+            // // scan
+            // cub::DeviceScan::ExclusiveScan(d_tmp_storage, tmp_storage_bytes, d_histogram_transpose, d_histogram_scan, cub::Sum(), 0, (int)HISTOGRAM_ELEMENTS*num_blocks);
+            // // transpose
+            // transposeTiled<unsigned int, 32>(d_histogram_scan, d_histogram_transpose, HISTOGRAM_ELEMENTS, num_blocks);
+            
+            // unsigned int* tmp;
+            // tmp = d_histogram_scan;
+            // d_histogram_scan = d_histogram_transpose;
+            // d_histogram_transpose = tmp;
+
+            // globalScatterKernel<T, B, E, TS, TILE_ELEMENTS, HISTOGRAM_ELEMENTS>
+            //     <<<num_blocks, TS>>>(d_out, d_in, N, d_histogram, d_histogram_scan, i, mask);
         }
     }
 }; // Radix end
+
+
+
+// This kernel is used for validation testing
+template<
+    typename T,
+    int E,
+    int TS
+>
+__global__ void
+RadixIntraCub(T* d_in, T* d_out, size_t N) {
+
+    const unsigned int TILE_ELEMENTS = TS * E;
+    int tile_id = blockIdx.x;
+    int last_tile = ((N + TILE_ELEMENTS - 1) / TILE_ELEMENTS) - 1;
+    int last_size = N % TILE_ELEMENTS == 0 ? TILE_ELEMENTS : N % TILE_ELEMENTS;
+    int local_tile_size = tile_id == last_tile ? last_size : TILE_ELEMENTS;
+
+
+    typedef cub::BlockRadixSort<T, TS, E> BlockRadixSort;
+
+    __shared__ typename BlockRadixSort::TempStorage temp_storage;
+
+    
+    __shared__ T s_tile[TILE_ELEMENTS];
+    loadTile<T, E, TILE_ELEMENTS>(s_tile, d_in, N);
+    __syncthreads();
+
+    T elements[E]; 
+    loadThreadElements<T, E>(elements, s_tile, local_tile_size); 
+    __syncthreads();
+
+    BlockRadixSort(temp_storage).Sort(elements);
+
+    // Write to tile to global mem    
+    for(int i = 0; i < E; i++) {
+        unsigned int t_index = threadIdx.x * E + i;
+        if (t_index < local_tile_size) {
+            s_tile[t_index] = elements[i];
+        }
+    }
+    __syncthreads();
+    for (int i = 0; i < E; i++) {
+        unsigned int s_index = threadIdx.x + blockDim.x * i;
+        unsigned int d_index = blockIdx.x * TILE_ELEMENTS + s_index;
+        if (d_index < N) {
+            d_out[d_index] = s_tile[s_index];
+        }
+    }
+}
+
+
 
 
 
