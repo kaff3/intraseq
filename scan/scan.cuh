@@ -98,6 +98,7 @@ void scan_kernel_seq_reg(T* d_in, size_t N, size_t iter) {
     const size_t num_elems = MAX_THREADS_BLOCK / BLOCKDIM_X2;
 
     volatile __shared__ T sh_mem[BLOCKDIM_X2 * sizeof(T) * num_elems];
+    volatile __shared__ T sh_tmp[BLOCKDIM_X2 * sizeof(T)];
 
     // Load into shared memory
     #pragma unroll
@@ -128,7 +129,7 @@ void scan_kernel_seq_reg(T* d_in, size_t N, size_t iter) {
             accum += reg_arr[i];
             reg_arr[i] = accum;
         }
-        sh_mem[tid] = accum;
+        sh_tmp[tid] = accum;
         __syncthreads();
         
         sh_mem[tid] = scan_inc_block<T>(sh_tmp, tid);
