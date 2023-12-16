@@ -148,9 +148,6 @@ int main(int argc, char* argv[]) {
   
     unsigned int size = 134217728;
 
-    #ifdef DO_VALIDATE 
-    size = 100000;
-    #endif
 
     printf("Seq factor ======\n");
     test<unsigned int, 4, 1, 256>(size, gpu_runs); 
@@ -158,12 +155,13 @@ int main(int argc, char* argv[]) {
     test<unsigned int, 4, 8, 256>(size, gpu_runs); 
     test<unsigned int, 4, 22, 256>(size, gpu_runs); 
 
-    printf("=====================================");
-    test<unsigned int, 4, 4, 128>(size, gpu_runs); 
-    test<unsigned int, 4, 4, 256>(size, gpu_runs); 
-    test<unsigned int, 4, 4, 512>(size, gpu_runs); 
-    test<unsigned int, 4, 4, 1024>(size, gpu_runs); 
-
+    #ifndef DO_VALIDATE
+        printf("=====================================");
+        test<unsigned int, 4, 4, 128>(size, gpu_runs); 
+        test<unsigned int, 4, 4, 256>(size, gpu_runs); 
+        test<unsigned int, 4, 4, 512>(size, gpu_runs); 
+        test<unsigned int, 4, 4, 1024>(size, gpu_runs); 
+    #endif
 
 
 
